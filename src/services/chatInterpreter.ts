@@ -82,7 +82,7 @@ async function interpretWithOpenRouter(
   );
 
   const completion = await openai.chat.completions.create({
-    model: 'google/gemini-2.5-flash-lite:free',
+    model: 'google/gemma-4-31b-it:free',
     messages: [
       { role: 'system', content: CHAT_DESIGN_SYSTEM_PROMPT },
       { role: 'user', content: prompt },

@@ -10,10 +10,11 @@ import { MOBILE_REFORMAT_SYSTEM_PROMPT } from '../prompts/mobileReformat';
 const API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY as string;
 
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
-const FREE_MODEL = 'google/gemini-2.5-flash-lite:free';
-// Alternativas :free:
-// - 'deepseek/deepseek-chat-v3-0324:free'
-// - 'meta-llama/llama-4-maverick:free'
+const FREE_MODEL = 'google/gemma-4-31b-it:free';
+// Alternativas :free (si el primario no está disponible):
+// - 'google/gemma-4-26b-a4b-it:free'
+// - 'qwen/qwen3-next-80b-a3b-instruct:free'
+// - 'meta-llama/llama-3.3-70b-instruct:free'
 
 function getClient(): OpenAI {
   if (!API_KEY) throw new Error('VITE_OPENROUTER_API_KEY no configurada');
