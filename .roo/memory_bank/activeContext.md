@@ -9,7 +9,7 @@
 - **Frontend:** React 19 + Vite 8 + TypeScript 6 + Tailwind CSS v4
 - **Hosting:** Render Static Site ($0/mes)
 - **LLM Primario:** Gemini 2.5 Flash API (Structured Outputs, 10 RPM/250 RPD)
-- **LLM Fallback:** OpenRouter modelos :free (google/gemini-2.5-flash-lite:free)
+- **LLM Fallback:** OpenRouter multi-modelo (google/gemma-4-31b-it:free -> qwen/qwen3-next-80b-a3b-instruct:free -> meta-llama/llama-3.3-70b-instruct:free -> openrouter/free router)
 - **Web Search:** Firecrawl Search API (500 créditos/mes gratis)
 - **PDF Extract:** react-pdftotext (pdf.js wrapper) + charset fixer
 - **PDF Generate:** html2pdf.js (rasterizado A5, texto no seleccionable — limitación conocida)
@@ -17,7 +17,7 @@
 ## Estrategia de Conversión
 Extraer texto → LLM reformatea a JSON estructurado → html2pdf.js genera PDF A5
 Pipeline: idle → extracting → reformatting → generating → done
-Fallback chain: Gemini 2.5 Flash → OpenRouter :free
+Fallback chain: Gemini 2.5 Flash (con circuit breaker) → OpenRouter multi-modelo (openrouter/free router primero)
 
 ## Estado de las Fases
 
@@ -79,6 +79,28 @@ Fallback chain: Gemini 2.5 Flash → OpenRouter :free
 - ✅ Repo creado y pusheado a GitHub (commit `112001a`)
 - 📋 Pendiente conectar en Render: `dashboard.render.com` → Blueprint → seleccionar repo
 - 🔑 Configurar `VITE_GEMINI_API_KEY` y `VITE_OPENROUTER_API_KEY` en Render Environment
+
+## 🆕 Optimización de Latencia (Commit: `56fd370`)
+- **Circuit Breaker:** [`circuitBreaker.ts`](src/services/circuitBreaker.ts) — tras 3 fallos 429 de Gemini, salta Gemini durante 5 minutos
+- **`maxRetries: 0`** en ambos clientes OpenAI (OpenRouter) — elimina los 3 auto-reintentos del SDK por modelo
+- **`openrouter/free` como primer modelo** en ambas cadenas — el router automático selecciona el mejor modelo :free sin iterar
+- **Resultado esperado:** de ~15-20s a ~3-5s en condiciones de rate-limit
+
+## 🆕 Rediseño Profesional del PDF Móvil (Commit: `66c3c5f`)
+- **Header con gradiente:** fondo `headerGradient` (navy degradado), título blanco, badge dorado
+- **Timeline visual:** cada día tiene un `day-marker` circular numerado (reemplaza borde izquierdo)
+- **Servicios semánticos:** fondos verde (incluido), rojo (excluido), azul (opcional) + labels coloreados
+- **Alojamientos con pin:** icono 📍 + ciudad/hotel en dos líneas con metadatos
+- **Notas con borde izquierdo:** borde de acento + fondo suave + itálica
+- **Tipografía:** Inter como primera opción, fallback a Segoe UI/system-ui
+- **Nuevas propiedades en PdfStyles:** `headerGradient`, `headerTextColor`, `bulletColor`, `mutedColor`, `cardRadius`
+- **Prompt del chat actualizado** para que el LLM conozca las nuevas propiedades
+
+## 🆕 Unificación Preview/PDF vía iframe (Commit pendiente)
+- **Problema:** [`MobilePreview.tsx`](src/components/MobilePreview.tsx) duplicaba la lógica de renderizado con React + inline styles, produciendo una vista diferente al PDF generado por [`pdfGenerator.ts`](src/services/pdfGenerator.ts)
+- **Solución:** [`MobilePreview.tsx`](src/components/MobilePreview.tsx) ahora renderiza vía `<iframe srcDoc={renderMobileTemplate(content, styles)}>`, usando exactamente el mismo HTML/CSS que el PDF
+- **Resultado:** Preview y PDF son **pixel-idénticos** — mismo gradiente, timeline markers, colores semánticos de servicios, pins de alojamiento, bordes de notas
+- **Aislamiento:** iframe con `sandbox="allow-same-origin"` para evitar fugas de estilo al DOM principal
 
 ## Próximo Paso
 1. Conectar repo a Render (el usuario debe hacerlo manualmente en dashboard.render.com)
