@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import type { MobileContent } from '../types';
 import { MOBILE_REFORMAT_SYSTEM_PROMPT } from '../prompts/mobileReformat';
+import { validateMobileContent } from '../utils/validateContent';
 
 /**
  * Cliente OpenRouter como fallback automático para la IA.
@@ -100,7 +101,7 @@ Responde con este formato JSON:
     try {
       console.log(`[openRouterApi] Intentando con modelo: ${model}`);
       const rawJson = await tryWithModel(openai, model, messages);
-      const parsed = JSON.parse(rawJson) as MobileContent;
+      const parsed = validateMobileContent(JSON.parse(rawJson));
       console.log(`[openRouterApi] Éxito con modelo: ${model}`);
       return parsed;
     } catch (err) {

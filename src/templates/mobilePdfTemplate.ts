@@ -63,14 +63,14 @@ export function renderMobileTemplate(content: MobileContent, styles?: PdfStyles)
     : '';
 
   // ── Days (timeline cards) ───────────────────────────────────
-  const daysHtml = content.days.length ? `
+  const daysHtml = (content.days ?? []).length ? `
     <div class="section">
       <div class="section-header">
         <span class="section-icon">&#x1F30D;</span>
         <span>ITINERARIO</span>
       </div>
       <div class="timeline">
-        ${content.days.map((d, i) => `
+        ${(content.days ?? []).map((d, i) => `
           <div class="day-card">
             <div class="day-marker">${i + 1}</div>
             <div class="day-body">

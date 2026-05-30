@@ -47,7 +47,7 @@ const MobilePreview: FC<Props> = ({ content, styles }) => {
           <iframe
             srcDoc={htmlString}
             title="Vista previa del documento móvil"
-            sandbox="allow-same-origin"
+            sandbox=""
             className="w-full border-0 block"
             style={{ height: '500px' }}
             scrolling="auto"

@@ -86,6 +86,25 @@ Fallback chain: DeepSeek V3 → OpenRouter multi-modelo (openrouter/free router 
 - **`openrouter/free` como primer modelo** en ambas cadenas — el router automático selecciona el mejor modelo :free sin iterar
 - **Resultado esperado:** de ~15-20s a ~3-5s en condiciones de rate-limit
 
+## 🆕 Fix DeepSeek JSON sin `title` (Commit pendiente — plan: `plans/plan_fix_deepseek_json.md`)
+
+**Bug:** `"IA devolvió respuesta sin título válido"` en [`validateContent.ts:102`](src/utils/validateContent.ts:102) cuando DeepSeek API no incluye el campo `title` en el JSON, a menudo porque la respuesta venía envuelta en code fences markdown o con BOM.
+
+**5 Fixes aplicados:**
+
+| # | Fix | Archivo | Descripción |
+|---|-----|---------|-------------|
+| 1 | Prompt con ejemplo JSON | [`mobileReformat.ts`](src/prompts/mobileReformat.ts) | Prompt incluye objeto JSON de ejemplo completo + reglas en inglés (`included/not_included/optional`) + regla 8 nueva (omitir campos si no hay datos) |
+| 2 | Strip markdown + BOM | [`stripMarkdown.ts`](src/utils/stripMarkdown.ts) | **NUEVO** — `stripMarkdownJson()` limpia `\uFEFF` BOM y ` ```json ``` ` fences antes del `JSON.parse()` |
+| 3 | Modelo V4 Flash + thinking disabled | [`deepseekApi.ts`](src/services/deepseekApi.ts) | `model: 'deepseek-v4-flash'`, `thinking: { type: 'disabled' }` vía `body` en el segundo argumento de `create()` |
+| 4 | Retry con backoff (3 intentos) | [`deepseekApi.ts`](src/services/deepseekApi.ts) | Bucle `for` con `setTimeout(1000 * attempt)` para empty content; no reintenta errores de validación |
+| 5 | buildPrompt mejorado | [`deepseekApi.ts`](src/services/deepseekApi.ts) | User prompt separa claramente la instrucción del texto a reformatear, palabra "JSON" en mayúscula |
+| 6 | Logging de diagnóstico | [`deepseekApi.ts`](src/services/deepseekApi.ts) | `console.log` con `finish_reason`, `content_length` y primeros 200 chars del JSON limpio |
+
+**Build:** `npx tsc -b && vite build` → ✅ 0 errores
+
+**Nota técnica:** `extra_body` no existe en el SDK de OpenAI v4.73. Se pasó `{ body: { thinking: { type: 'disabled' } } }` como segundo argumento de `openai.chat.completions.create()`.
+
 ## 🆕 Migración Gemini → DeepSeek API Directa (Commit pendiente)
 - **Motivo:** Gemini free tier tiene rate limits muy restrictivos (10 RPM, 250 RPD) que causan errores 429 constantes
 - **[`deepseekApi.ts`](src/services/deepseekApi.ts):** nuevo servicio primario usando OpenAI SDK contra `https://api.deepseek.com`
@@ -122,6 +141,29 @@ Fallback chain: DeepSeek V3 → OpenRouter multi-modelo (openrouter/free router 
   - `flex-wrap` reemplazado por `white-space: nowrap` con `display: inline`
   - `body` ancho fijo `559px` (A5 a 96dpi) para evitar reflow en canvas
 - **[`chatDesignInterpreter.ts`](src/prompts/chatDesignInterpreter.ts) actualizado:** el prompt prohíbe al LLM usar gradientes ni box-shadow
+
+## 🆕 Fix: `Cannot read properties of undefined (reading 'length')` (Commit pendiente)
+
+**Bug:** `TypeError: Cannot read properties of undefined (reading 'length')` en [`renderMobileTemplate()`](src/templates/mobilePdfTemplate.ts:66) cuando la IA devuelve JSON sin campo `days`.
+
+**Solución: 3 capas de defensa (defense in depth):**
+
+### Capa 1 — Template defensivo (P0)
+- [`mobilePdfTemplate.ts:66,73`](src/templates/mobilePdfTemplate.ts): `content.days` → `(content.days ?? [])` en ambos accesos
+
+### Capa 2 — Validación post-parseo (P1)
+- **Nuevo archivo:** [`validateContent.ts`](src/utils/validateContent.ts) — `validateMobileContent(raw: unknown): MobileContent`
+  - Sub-validators: `validateDay()`, `validateAccommodation()`, `validateService()`
+  - Campos obligatorios lanzan Error con mensaje descriptivo
+  - Campos opcionales reciben defaults seguros (`[]`, `undefined`)
+- [`deepseekApi.ts:80`](src/services/deepseekApi.ts): `as MobileContent` → `validateMobileContent(JSON.parse(rawJson))`
+- [`openRouterApi.ts:111`](src/services/openRouterApi.ts): `as MobileContent` → `validateMobileContent(JSON.parse(rawJson))`
+
+### Capa 3 — Schema tipado a la IA (P2)
+- [`deepseekApi.ts:67-74`](src/services/deepseekApi.ts): `response_format: { type: 'json_object' }` → `{ type: 'json_schema', json_schema: { name: 'mobile_content', schema: MOBILE_REFORMAT_SCHEMA, strict: true } }`
+- [`openRouterApi.ts:54-61`](src/services/openRouterApi.ts): mismo cambio en `tryWithModel()`
+
+**Build:** `npx tsc --noEmit` → ✅ 0 errores
 
 ## Próximo Paso
 1. Conectar repo a Render (el usuario debe hacerlo manualmente en dashboard.render.com)

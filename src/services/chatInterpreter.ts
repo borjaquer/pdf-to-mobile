@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import type { MobileContent, PdfStyles } from '../types';
 import { CHAT_DESIGN_SYSTEM_PROMPT, buildChatPrompt } from '../prompts/chatDesignInterpreter';
 import { isPrimaryAICircuitOpen, recordPrimaryAIFailure, recordPrimaryAISuccess } from './circuitBreaker';
+import { validateMobileContent } from '../utils/validateContent';
 
 /**
  * Servicio que interpreta instrucciones de diseño en lenguaje natural
@@ -138,12 +139,9 @@ async function interpretWithOpenRouter(
 
 // ── Validación ──────────────────────────────────────────────
 function validateInterpretation(result: ChatInterpretation): void {
-  if (!result.content || typeof result.content !== 'object') {
-    throw new Error('Respuesta inválida: falta "content"');
-  }
-  if (!result.content.title || !Array.isArray(result.content.days)) {
-    throw new Error('Respuesta inválida: "content" no tiene title/days');
-  }
+  // Delegar en validateMobileContent para validación completa de content
+  result.content = validateMobileContent(result.content);
+
   if (!result.styles || typeof result.styles !== 'object') {
     throw new Error('Respuesta inválida: falta "styles"');
   }
