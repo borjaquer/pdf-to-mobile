@@ -1,19 +1,21 @@
 # ============================================
 # PDF-to-Mobile — Render Static Site Config
 # ============================================
-# Render Blueprint detecta este archivo al
-# conectar el repositorio. Tras el deploy,
-# añade las env vars manualmente en el Dashboard.
-# ============================================
 
 services:
   - type: web
     name: pdf-to-mobile
-    env: static
+    runtime: static
     buildCommand: npm ci && npm run build
     staticPublishPath: ./dist
-    pullRequestPreviewsEnabled: true
     routes:
       - type: rewrite
         source: /*
         destination: /index.html
+    envVars:
+      - key: VITE_GEMINI_API_KEY
+        sync: false
+      - key: VITE_OPENROUTER_API_KEY
+        sync: false
+      - key: VITE_FIRECRAWL_API_KEY
+        sync: false
