@@ -8,6 +8,7 @@ import { interpretChatInstruction } from '../services/chatInterpreter';
 import { waitForSlot, getRateLimitState } from '../services/rateLimiter';
 import { DEFAULT_PDF_STYLES } from '../templates/mobilePdfTemplate';
 import { searchWeb, detectSearchIntent, formatSearchContext } from '../services/webSearch';
+import { isGeminiCircuitOpen, recordGeminiFailure } from '../services/circuitBreaker';
 
 /**
  * Hook principal que orquesta el pipeline completo de conversión:
@@ -101,13 +102,20 @@ export function usePdfConversion() {
 
       clearInterval(ratePollInterval);
 
-      try {
-        // Intentar con Gemini 2.5 Flash primero
-        reformattedContent = await reformatWithGemini(extractedText);
-      } catch (geminiErr) {
-        console.warn('[usePdfConversion] Gemini falló, intentando OpenRouter fallback...', geminiErr);
-        // Fallback automático a OpenRouter
+      // ── Circuit breaker: saltar Gemini si está en cooldown ──
+      if (isGeminiCircuitOpen()) {
+        console.log('[usePdfConversion] Circuit breaker abierto — usando OpenRouter directamente');
         reformattedContent = await reformatWithOpenRouter(extractedText);
+      } else {
+        try {
+          // Intentar con Gemini 2.5 Flash primero
+          reformattedContent = await reformatWithGemini(extractedText);
+        } catch (geminiErr) {
+          recordGeminiFailure();
+          console.warn('[usePdfConversion] Gemini falló, intentando OpenRouter fallback...', geminiErr);
+          // Fallback automático a OpenRouter
+          reformattedContent = await reformatWithOpenRouter(extractedText);
+        }
       }
 
       contentRef.current = reformattedContent;

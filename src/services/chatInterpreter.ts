@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 import type { MobileContent, PdfStyles } from '../types';
 import { CHAT_DESIGN_SYSTEM_PROMPT, buildChatPrompt } from '../prompts/chatDesignInterpreter';
+import { isGeminiCircuitOpen, recordGeminiFailure, recordGeminiSuccess } from './circuitBreaker';
 
 /**
  * Servicio que interpreta instrucciones de diseño en lenguaje natural
@@ -60,12 +61,12 @@ async function interpretWithGemini(
 // ── OpenRouter fallback (cadena multi-modelo) ────────────────
 const OR_KEY = import.meta.env.VITE_OPENROUTER_API_KEY as string;
 
-/** Modelos :free en orden de preferencia. openrouter/free es el router automático. */
+/** Modelos :free en orden de preferencia. openrouter/free primero: máxima disponibilidad. */
 const OR_FALLBACK_MODELS = [
+  'openrouter/free',
   'google/gemma-4-31b-it:free',
   'qwen/qwen3-next-80b-a3b-instruct:free',
   'meta-llama/llama-3.3-70b-instruct:free',
-  'openrouter/free',
 ];
 
 function isRateLimitError(err: unknown): boolean {
@@ -85,6 +86,7 @@ async function interpretWithOpenRouter(
     baseURL: 'https://openrouter.ai/api/v1',
     apiKey: OR_KEY,
     dangerouslyAllowBrowser: true,
+    maxRetries: 0, // sin auto-reintentos — la cadena de fallback ya itera
   });
 
   const prompt = buildChatPrompt(
@@ -161,9 +163,18 @@ export async function interpretChatInstruction(
   currentStyles: PdfStyles,
   searchContext?: string,
 ): Promise<ChatInterpretation> {
+  // ── Circuit breaker: saltar Gemini si el circuito está abierto ──
+  if (isGeminiCircuitOpen()) {
+    console.log('[chatInterpreter] Circuit breaker abierto — saltando Gemini');
+    return await interpretWithOpenRouter(userMessage, currentContent, currentStyles, searchContext);
+  }
+
   try {
-    return await interpretWithGemini(userMessage, currentContent, currentStyles, searchContext);
+    const result = await interpretWithGemini(userMessage, currentContent, currentStyles, searchContext);
+    recordGeminiSuccess();
+    return result;
   } catch (geminiErr) {
+    recordGeminiFailure();
     console.warn('[chatInterpreter] Gemini falló, intentando OpenRouter...', String(geminiErr).slice(0, 150));
     return await interpretWithOpenRouter(userMessage, currentContent, currentStyles, searchContext);
   }

@@ -2,6 +2,7 @@ import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import type { MobileContent } from '../types';
 import { MOBILE_REFORMAT_SYSTEM_PROMPT, MOBILE_REFORMAT_SCHEMA } from '../prompts/mobileReformat';
 import { chunkText } from '../utils/textChunker';
+import { isGeminiCircuitOpen, recordGeminiSuccess } from './circuitBreaker';
 
 /**
  * Cliente Gemini 2.5 Flash con Structured Outputs.
@@ -73,6 +74,11 @@ function toGeminiSchema(tsSchema: Record<string, unknown>): Record<string, unkno
  * Si el texto es muy largo, lo divide en chunks y consolida.
  */
 export async function reformatWithGemini(pdfText: string): Promise<MobileContent> {
+  // ── Circuit breaker: rechazar inmediatamente si el circuito está abierto ──
+  if (isGeminiCircuitOpen()) {
+    throw new Error('Gemini bloqueado por circuit breaker (demasiados 429 consecutivos)');
+  }
+
   const genAI = getClient();
   const model = genAI.getGenerativeModel({
     model: 'gemini-2.5-flash',
@@ -97,6 +103,7 @@ export async function reformatWithGemini(pdfText: string): Promise<MobileContent
 
     const responseText = result.response.text();
     const parsed = JSON.parse(responseText) as MobileContent;
+    recordGeminiSuccess();
     return parsed;
   }
 
@@ -133,7 +140,7 @@ ${chunks[i]}
     services: allResults.flatMap(r => r.services ?? []),
     notes: allResults.flatMap(r => r.notes ?? []),
   };
-
+  recordGeminiSuccess();
   return consolidated;
 }
 

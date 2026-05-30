@@ -13,12 +13,17 @@ import { MOBILE_REFORMAT_SYSTEM_PROMPT } from '../prompts/mobileReformat';
 const API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY as string;
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
 
-/** Modelos :free en orden de preferencia para el fallback */
+/**
+ * Modelos :free en orden de preferencia.
+ * openrouter/free primero: el router automático selecciona el modelo
+ * gratuito con mejor disponibilidad sin iterar por la cadena.
+ * Los modelos explícitos son fallback si el router falla.
+ */
 const FALLBACK_MODELS = [
+  'openrouter/free', // router automático — máxima disponibilidad
   'google/gemma-4-31b-it:free',
   'qwen/qwen3-next-80b-a3b-instruct:free',
   'meta-llama/llama-3.3-70b-instruct:free',
-  'openrouter/free', // router automático — siempre disponible
 ];
 
 function getClient(): OpenAI {
@@ -27,6 +32,7 @@ function getClient(): OpenAI {
     baseURL: OPENROUTER_BASE,
     apiKey: API_KEY,
     dangerouslyAllowBrowser: true,
+    maxRetries: 0, // sin auto-reintentos — la cadena de fallback ya itera
   });
 }
 
