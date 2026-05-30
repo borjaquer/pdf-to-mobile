@@ -7,8 +7,8 @@ import { CHAT_DESIGN_SYSTEM_PROMPT, buildChatPrompt } from '../prompts/chatDesig
  * Servicio que interpreta instrucciones de diseño en lenguaje natural
  * y las traduce a mutaciones sobre MobileContent + PdfStyles.
  *
- * Usa Gemini 2.5 Flash como primario, con fallback automático a OpenRouter :free.
- * Ambos devuelven { content, styles, message }.
+ * Usa Gemini 2.5 Flash como primario, con fallback automático a OpenRouter :free
+ * con cadena multi-modelo (prueba varios hasta encontrar uno disponible).
  */
 
 interface ChatInterpretation {
@@ -57,8 +57,21 @@ async function interpretWithGemini(
   return parsed;
 }
 
-// ── OpenRouter fallback ──────────────────────────────────────
+// ── OpenRouter fallback (cadena multi-modelo) ────────────────
 const OR_KEY = import.meta.env.VITE_OPENROUTER_API_KEY as string;
+
+/** Modelos :free en orden de preferencia. openrouter/free es el router automático. */
+const OR_FALLBACK_MODELS = [
+  'google/gemma-4-31b-it:free',
+  'qwen/qwen3-next-80b-a3b-instruct:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'openrouter/free',
+];
+
+function isRateLimitError(err: unknown): boolean {
+  const msg = String(err);
+  return msg.includes('429') || msg.includes('rate') || msg.includes('quota');
+}
 
 async function interpretWithOpenRouter(
   userMessage: string,
@@ -81,23 +94,40 @@ async function interpretWithOpenRouter(
     searchContext,
   );
 
-  const completion = await openai.chat.completions.create({
-    model: 'google/gemma-4-31b-it:free',
-    messages: [
-      { role: 'system', content: CHAT_DESIGN_SYSTEM_PROMPT },
-      { role: 'user', content: prompt },
-    ],
-    temperature: 0.2,
-    max_tokens: 8192,
-    response_format: { type: 'json_object' },
-  });
+  let lastError: unknown;
 
-  const rawJson = completion.choices[0]?.message?.content;
-  if (!rawJson) throw new Error('OpenRouter devolvió respuesta vacía');
+  for (const model of OR_FALLBACK_MODELS) {
+    try {
+      console.log(`[chatInterpreter] OpenRouter intentando: ${model}`);
+      const completion = await openai.chat.completions.create({
+        model,
+        messages: [
+          { role: 'system', content: CHAT_DESIGN_SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 8192,
+        response_format: { type: 'json_object' },
+      });
 
-  const parsed = JSON.parse(rawJson) as ChatInterpretation;
-  validateInterpretation(parsed);
-  return parsed;
+      const rawJson = completion.choices[0]?.message?.content;
+      if (!rawJson) throw new Error(`OpenRouter (${model}) devolvió respuesta vacía`);
+
+      const parsed = JSON.parse(rawJson) as ChatInterpretation;
+      validateInterpretation(parsed);
+      console.log(`[chatInterpreter] OpenRouter éxito con: ${model}`);
+      return parsed;
+    } catch (err) {
+      lastError = err;
+      if (isRateLimitError(err)) {
+        console.warn(`[chatInterpreter] ${model} rate-limited, probando siguiente...`);
+        continue;
+      }
+      console.warn(`[chatInterpreter] ${model} falló:`, String(err).slice(0, 120));
+    }
+  }
+
+  throw lastError ?? new Error('OpenRouter: todos los modelos fallaron');
 }
 
 // ── Validación ──────────────────────────────────────────────
@@ -120,7 +150,7 @@ function validateInterpretation(result: ChatInterpretation): void {
 
 /**
  * Interpreta una instrucción de diseño en lenguaje natural.
- * Intenta con Gemini primero; si falla, usa OpenRouter.
+ * Intenta con Gemini primero; si falla, usa OpenRouter con cadena multi-modelo.
  *
  * @param searchContext - Opcional: resultados de búsqueda web para enriquecer la interpretación
  * @returns Nuevo contenido, nuevos estilos y mensaje explicativo
@@ -134,7 +164,7 @@ export async function interpretChatInstruction(
   try {
     return await interpretWithGemini(userMessage, currentContent, currentStyles, searchContext);
   } catch (geminiErr) {
-    console.warn('[chatInterpreter] Gemini falló, intentando OpenRouter...', geminiErr);
+    console.warn('[chatInterpreter] Gemini falló, intentando OpenRouter...', String(geminiErr).slice(0, 150));
     return await interpretWithOpenRouter(userMessage, currentContent, currentStyles, searchContext);
   }
 }
