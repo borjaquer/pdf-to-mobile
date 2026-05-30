@@ -1,0 +1,29 @@
+# ============================================
+# PDF-to-Mobile — Render Static Site Config
+# ============================================
+# Render detecta este archivo automáticamente
+# al conectar el repositorio. No requiere
+# configuración manual en el dashboard.
+# ============================================
+
+services:
+  - type: web
+    name: pdf-to-mobile
+    env: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    pullRequestPreviewsEnabled: true
+    envVars:
+      - key: VITE_GEMINI_API_KEY
+        sync: false
+      - key: VITE_OPENROUTER_API_KEY
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /assets/*
+        headers:
+          - key: Cache-Control
+            value: public, max-age=31536000, immutable
