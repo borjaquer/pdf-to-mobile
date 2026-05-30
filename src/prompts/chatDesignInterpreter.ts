@@ -34,6 +34,11 @@ REGLAS DE DISEÑO (estilos):
 - priceColor = fondo del badge de precio (si no se especifica, usa accentColor)
 - backgroundColor = fondo de toda la página
 - cardBackground = fondo de las cards de día y alojamiento
+- headerGradient = gradiente CSS de fondo del header (ej. "linear-gradient(160deg, #0f172a, #1e3a5f)")
+- headerTextColor = color del texto dentro del header
+- bulletColor = color de los bullets (círculos) en listas
+- mutedColor = color de texto secundario (metadatos, fechas, subtítulos)
+- cardRadius = radio de borde de las cards en px (por defecto 8)
 
 REGLAS DE CONTENIDO:
 - Para cambiar el título: modifica content.title

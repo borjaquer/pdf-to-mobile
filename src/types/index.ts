@@ -53,14 +53,21 @@ export interface MobileContent {
  * Si no se especifican, se usan los defaults del template.
  */
 export interface PdfStyles {
+  /** Color del título principal */
   titleColor: string;
+  /** Color de encabezados de sección */
   headingColor: string;
+  /** Color base del texto */
   textColor: string;
+  /** Color de acento (bordes, bullets, badges) */
   accentColor: string;
+  /** Fondo general del documento */
   backgroundColor: string;
+  /** Familia tipográfica (system-ui por defecto) */
   fontFamily: string;
-  fontSize: number; // px base
-  /** Color del badge de precio (si content.subtitle incluye precio) */
+  /** Tamaño base de fuente en px */
+  fontSize: number;
+  /** Color del badge de precio */
   priceColor?: string;
   /** Color del subtítulo */
   subtitleColor?: string;
@@ -68,6 +75,16 @@ export interface PdfStyles {
   dividerColor?: string;
   /** Fondo de cards de día/alojamiento */
   cardBackground?: string;
+  /** Gradiente de fondo del header (opcional) */
+  headerGradient?: string;
+  /** Color del texto en el header */
+  headerTextColor?: string;
+  /** Color de fondo de los bullets */
+  bulletColor?: string;
+  /** Color de texto secundario (metadatos, fechas) */
+  mutedColor?: string;
+  /** Radio de borde de las cards (px) */
+  cardRadius?: number;
 }
 
 export interface GeminiResponse {
