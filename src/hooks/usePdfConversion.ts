@@ -1,14 +1,13 @@
 import { useState, useCallback, useRef } from 'react';
 import type { PdfConversionState, MobileContent, PdfStyles } from '../types';
 import { extractPdfText } from '../services/pdfExtractor';
-import { reformatWithGemini } from '../services/geminiApi';
+import { reformatWithDeepSeek } from '../services/deepseekApi';
 import { reformatWithOpenRouter } from '../services/openRouterApi';
 import { generatePdf } from '../services/pdfGenerator';
 import { interpretChatInstruction } from '../services/chatInterpreter';
-import { waitForSlot, getRateLimitState } from '../services/rateLimiter';
 import { DEFAULT_PDF_STYLES } from '../templates/mobilePdfTemplate';
 import { searchWeb, detectSearchIntent, formatSearchContext } from '../services/webSearch';
-import { isGeminiCircuitOpen, recordGeminiFailure } from '../services/circuitBreaker';
+import { isPrimaryAICircuitOpen, recordPrimaryAIFailure } from '../services/circuitBreaker';
 
 /**
  * Hook principal que orquesta el pipeline completo de conversión:
@@ -17,7 +16,7 @@ import { isGeminiCircuitOpen, recordGeminiFailure } from '../services/circuitBre
  * Máquina de estados: idle → extracting → reformatting → generating → done
  * En cualquier paso puede transicionar a: → error
  *
- * Fallback chain en reformatting: Gemini 2.5 Flash → OpenRouter :free
+ * Fallback chain en reformatting: DeepSeek V3 → OpenRouter :free
  *
  * También expone regeneratePdf() para regenerar el PDF con contenido
  * y estilos editados sin volver a llamar a la IA.
@@ -81,38 +80,17 @@ export function usePdfConversion() {
     let reformattedContent: MobileContent;
 
     try {
-      // Rate limiting: mostrar cuenta atrás en tiempo real mientras se espera slot
-      const ratePollInterval = setInterval(() => {
-        const rl = getRateLimitState();
-        if (rl.estimatedWaitMs > 0 || rl.isLimited) {
-          setState(prev => prev.step === 'reformatting'
-            ? { ...prev, rateLimitWaitMs: rl.estimatedWaitMs }
-            : prev);
-        }
-      }, 1000);
-
-      try {
-        await waitForSlot();
-      } catch (rateErr) {
-        clearInterval(ratePollInterval);
-        const msg = rateErr instanceof Error ? rateErr.message : 'Rate limit exceeded';
-        setState({ step: 'error', error: msg, errorStep: 'reformat' });
-        return;
-      }
-
-      clearInterval(ratePollInterval);
-
-      // ── Circuit breaker: saltar Gemini si está en cooldown ──
-      if (isGeminiCircuitOpen()) {
+      // ── Circuit breaker: saltar DeepSeek si está en cooldown ──
+      if (isPrimaryAICircuitOpen()) {
         console.log('[usePdfConversion] Circuit breaker abierto — usando OpenRouter directamente');
         reformattedContent = await reformatWithOpenRouter(extractedText);
       } else {
         try {
-          // Intentar con Gemini 2.5 Flash primero
-          reformattedContent = await reformatWithGemini(extractedText);
-        } catch (geminiErr) {
-          recordGeminiFailure();
-          console.warn('[usePdfConversion] Gemini falló, intentando OpenRouter fallback...', geminiErr);
+          // Intentar con DeepSeek V3 primero
+          reformattedContent = await reformatWithDeepSeek(extractedText);
+        } catch (dsErr) {
+          recordPrimaryAIFailure();
+          console.warn('[usePdfConversion] DeepSeek falló, intentando OpenRouter fallback...', dsErr);
           // Fallback automático a OpenRouter
           reformattedContent = await reformatWithOpenRouter(extractedText);
         }

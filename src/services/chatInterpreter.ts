@@ -1,14 +1,13 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 import type { MobileContent, PdfStyles } from '../types';
 import { CHAT_DESIGN_SYSTEM_PROMPT, buildChatPrompt } from '../prompts/chatDesignInterpreter';
-import { isGeminiCircuitOpen, recordGeminiFailure, recordGeminiSuccess } from './circuitBreaker';
+import { isPrimaryAICircuitOpen, recordPrimaryAIFailure, recordPrimaryAISuccess } from './circuitBreaker';
 
 /**
  * Servicio que interpreta instrucciones de diseño en lenguaje natural
  * y las traduce a mutaciones sobre MobileContent + PdfStyles.
  *
- * Usa Gemini 2.5 Flash como primario, con fallback automático a OpenRouter :free
+ * Usa DeepSeek V3 como primario, con fallback automático a OpenRouter :free
  * con cadena multi-modelo (prueba varios hasta encontrar uno disponible).
  */
 
@@ -18,25 +17,23 @@ interface ChatInterpretation {
   message: string;
 }
 
-// ── Gemini ──────────────────────────────────────────────────
-const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
+// ── DeepSeek (primario) ──────────────────────────────────────
+const DEEPSEEK_KEY = import.meta.env.VITE_DEEPSEEK_API_KEY as string;
+const DEEPSEEK_BASE = 'https://api.deepseek.com';
 
-async function interpretWithGemini(
+async function interpretWithDeepSeek(
   userMessage: string,
   currentContent: MobileContent,
   currentStyles: PdfStyles,
   searchContext?: string,
 ): Promise<ChatInterpretation> {
-  if (!GEMINI_KEY) throw new Error('VITE_GEMINI_API_KEY no configurada');
+  if (!DEEPSEEK_KEY) throw new Error('VITE_DEEPSEEK_API_KEY no configurada');
 
-  const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      temperature: 0.2,
-      maxOutputTokens: 8192,
-      responseMimeType: 'application/json',
-    },
+  const openai = new OpenAI({
+    baseURL: DEEPSEEK_BASE,
+    apiKey: DEEPSEEK_KEY,
+    dangerouslyAllowBrowser: true,
+    maxRetries: 1,
   });
 
   const prompt = buildChatPrompt(
@@ -46,14 +43,21 @@ async function interpretWithGemini(
     searchContext,
   );
 
-  const result = await model.generateContent({
-    contents: [{ role: 'user', parts: [{ text: `${CHAT_DESIGN_SYSTEM_PROMPT}\n\n${prompt}` }] }],
+  const result = await openai.chat.completions.create({
+    model: 'deepseek-chat',
+    messages: [
+      { role: 'system', content: CHAT_DESIGN_SYSTEM_PROMPT },
+      { role: 'user', content: prompt },
+    ],
+    temperature: 0.2,
+    max_tokens: 8192,
+    response_format: { type: 'json_object' },
   });
 
-  const text = result.response.text();
-  if (!text) throw new Error('Gemini devolvió respuesta vacía');
+  const rawJson = result.choices[0]?.message?.content;
+  if (!rawJson) throw new Error('DeepSeek devolvió respuesta vacía');
 
-  const parsed = JSON.parse(text) as ChatInterpretation;
+  const parsed = JSON.parse(rawJson) as ChatInterpretation;
   validateInterpretation(parsed);
   return parsed;
 }
@@ -86,7 +90,7 @@ async function interpretWithOpenRouter(
     baseURL: 'https://openrouter.ai/api/v1',
     apiKey: OR_KEY,
     dangerouslyAllowBrowser: true,
-    maxRetries: 0, // sin auto-reintentos — la cadena de fallback ya itera
+    maxRetries: 0,
   });
 
   const prompt = buildChatPrompt(
@@ -152,7 +156,7 @@ function validateInterpretation(result: ChatInterpretation): void {
 
 /**
  * Interpreta una instrucción de diseño en lenguaje natural.
- * Intenta con Gemini primero; si falla, usa OpenRouter con cadena multi-modelo.
+ * Intenta con DeepSeek primero; si falla, usa OpenRouter con cadena multi-modelo.
  *
  * @param searchContext - Opcional: resultados de búsqueda web para enriquecer la interpretación
  * @returns Nuevo contenido, nuevos estilos y mensaje explicativo
@@ -163,19 +167,19 @@ export async function interpretChatInstruction(
   currentStyles: PdfStyles,
   searchContext?: string,
 ): Promise<ChatInterpretation> {
-  // ── Circuit breaker: saltar Gemini si el circuito está abierto ──
-  if (isGeminiCircuitOpen()) {
-    console.log('[chatInterpreter] Circuit breaker abierto — saltando Gemini');
+  // ── Circuit breaker: saltar DeepSeek si el circuito está abierto ──
+  if (isPrimaryAICircuitOpen()) {
+    console.log('[chatInterpreter] Circuit breaker abierto — saltando DeepSeek');
     return await interpretWithOpenRouter(userMessage, currentContent, currentStyles, searchContext);
   }
 
   try {
-    const result = await interpretWithGemini(userMessage, currentContent, currentStyles, searchContext);
-    recordGeminiSuccess();
+    const result = await interpretWithDeepSeek(userMessage, currentContent, currentStyles, searchContext);
+    recordPrimaryAISuccess();
     return result;
-  } catch (geminiErr) {
-    recordGeminiFailure();
-    console.warn('[chatInterpreter] Gemini falló, intentando OpenRouter...', String(geminiErr).slice(0, 150));
+  } catch (deepseekErr) {
+    recordPrimaryAIFailure();
+    console.warn('[chatInterpreter] DeepSeek falló, intentando OpenRouter...', String(deepseekErr).slice(0, 150));
     return await interpretWithOpenRouter(userMessage, currentContent, currentStyles, searchContext);
   }
 }

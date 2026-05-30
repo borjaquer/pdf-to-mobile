@@ -5,19 +5,19 @@
 🆕 **Chat de Diseño** reemplaza ContentEditor form-based por interfaz conversacional con LLM.
 🆕 **Búsqueda Web** integrada en el chat para inspirar decisiones de diseño con datos reales.
 
-## Stack Confirmado (Todo Gratis, 100% Client-Side)
+## Stack Confirmado (100% Client-Side)
 - **Frontend:** React 19 + Vite 8 + TypeScript 6 + Tailwind CSS v4
 - **Hosting:** Render Static Site ($0/mes)
-- **LLM Primario:** Gemini 2.5 Flash API (Structured Outputs, 10 RPM/250 RPD)
-- **LLM Fallback:** OpenRouter multi-modelo (google/gemma-4-31b-it:free -> qwen/qwen3-next-80b-a3b-instruct:free -> meta-llama/llama-3.3-70b-instruct:free -> openrouter/free router)
+- **LLM Primario:** DeepSeek V3 API directa (deepseek-chat, OpenAI-compatible, ~$0.27/M input)
+- **LLM Fallback:** OpenRouter multi-modelo (openrouter/free -> gemma-4-31b-it:free -> qwen3-next:free -> llama-3.3-70b:free)
 - **Web Search:** Firecrawl Search API (500 créditos/mes gratis)
 - **PDF Extract:** react-pdftotext (pdf.js wrapper) + charset fixer
-- **PDF Generate:** html2pdf.js (rasterizado A5, texto no seleccionable — limitación conocida)
+- **PDF Generate:** html2pdf.js (rasterizado A5, texto no seleccionable)
 
 ## Estrategia de Conversión
 Extraer texto → LLM reformatea a JSON estructurado → html2pdf.js genera PDF A5
 Pipeline: idle → extracting → reformatting → generating → done
-Fallback chain: Gemini 2.5 Flash (con circuit breaker) → OpenRouter multi-modelo (openrouter/free router primero)
+Fallback chain: DeepSeek V3 → OpenRouter multi-modelo (openrouter/free router primero)
 
 ## Estado de las Fases
 
@@ -85,6 +85,16 @@ Fallback chain: Gemini 2.5 Flash (con circuit breaker) → OpenRouter multi-mode
 - **`maxRetries: 0`** en ambos clientes OpenAI (OpenRouter) — elimina los 3 auto-reintentos del SDK por modelo
 - **`openrouter/free` como primer modelo** en ambas cadenas — el router automático selecciona el mejor modelo :free sin iterar
 - **Resultado esperado:** de ~15-20s a ~3-5s en condiciones de rate-limit
+
+## 🆕 Migración Gemini → DeepSeek API Directa (Commit pendiente)
+- **Motivo:** Gemini free tier tiene rate limits muy restrictivos (10 RPM, 250 RPD) que causan errores 429 constantes
+- **[`deepseekApi.ts`](src/services/deepseekApi.ts):** nuevo servicio primario usando OpenAI SDK contra `https://api.deepseek.com`
+- **[`chatInterpreter.ts`](src/services/chatInterpreter.ts):** DeepSeek reemplaza Gemini como primario, OpenRouter sigue como fallback
+- **[`geminiApi.ts`](src/services/geminiApi.ts):** ELIMINADO — código muerto
+- **[`circuitBreaker.ts`](src/services/circuitBreaker.ts):** renombrado a funciones genéricas (`isPrimaryAICircuitOpen`, etc.), con aliases legacy
+- **[`usePdfConversion.ts`](src/hooks/usePdfConversion.ts):** DeepSeek en vez de Gemini, rate limiter eliminado (DeepSeek no tiene restricciones estrictas)
+- **`@google/generative-ai`:** desinstalado de dependencias
+- **`render.yaml` + `.env.example`:** `VITE_GEMINI_API_KEY` → `VITE_DEEPSEEK_API_KEY`
 
 ## 🆕 Rediseño Profesional del PDF Móvil (Commit: `66c3c5f`)
 - **Header con gradiente:** fondo `headerGradient` (navy degradado), título blanco, badge dorado

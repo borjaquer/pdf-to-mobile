@@ -13,7 +13,7 @@ services:
         source: /*
         destination: /index.html
     envVars:
-      - key: VITE_GEMINI_API_KEY
+      - key: VITE_DEEPSEEK_API_KEY
         sync: false
       - key: VITE_OPENROUTER_API_KEY
         sync: false
