@@ -96,11 +96,22 @@ Fallback chain: Gemini 2.5 Flash (con circuit breaker) → OpenRouter multi-mode
 - **Nuevas propiedades en PdfStyles:** `headerGradient`, `headerTextColor`, `bulletColor`, `mutedColor`, `cardRadius`
 - **Prompt del chat actualizado** para que el LLM conozca las nuevas propiedades
 
-## 🆕 Unificación Preview/PDF vía iframe (Commit pendiente)
+## 🆕 Unificación Preview/PDF vía iframe (Commit: `17584bf`)
 - **Problema:** [`MobilePreview.tsx`](src/components/MobilePreview.tsx) duplicaba la lógica de renderizado con React + inline styles, produciendo una vista diferente al PDF generado por [`pdfGenerator.ts`](src/services/pdfGenerator.ts)
 - **Solución:** [`MobilePreview.tsx`](src/components/MobilePreview.tsx) ahora renderiza vía `<iframe srcDoc={renderMobileTemplate(content, styles)}>`, usando exactamente el mismo HTML/CSS que el PDF
 - **Resultado:** Preview y PDF son **pixel-idénticos** — mismo gradiente, timeline markers, colores semánticos de servicios, pins de alojamiento, bordes de notas
-- **Aislamiento:** iframe con `sandbox="allow-same-origin"` para evitar fugas de estilo al DOM principal
+
+## 🆕 CSS compatible con html2pdf.js (Commit pendiente)
+- **Problema:** `html2pdf.js`/`html2canvas` no soporta: `linear-gradient`, `box-shadow`, `::before`/`::after`, `gap` en flexbox, `flex-wrap`
+- **Correcciones en [`mobilePdfTemplate.ts`](src/templates/mobilePdfTemplate.ts):**
+  - `headerGradient` default ahora es sólido `#1e293b` (no `linear-gradient(...)`)
+  - `box-shadow` eliminado del `.price-badge`
+  - Pseudo-elemento `::before` para bullets reemplazado por `<span class="bullet-dot">` real
+  - `gap` en flexbox reemplazado por `margin-bottom` + `:last-child`
+  - `display: flex` reemplazado por `display: table`/`table-cell` con `vertical-align`
+  - `flex-wrap` reemplazado por `white-space: nowrap` con `display: inline`
+  - `body` ancho fijo `559px` (A5 a 96dpi) para evitar reflow en canvas
+- **[`chatDesignInterpreter.ts`](src/prompts/chatDesignInterpreter.ts) actualizado:** el prompt prohíbe al LLM usar gradientes ni box-shadow
 
 ## Próximo Paso
 1. Conectar repo a Render (el usuario debe hacerlo manualmente en dashboard.render.com)

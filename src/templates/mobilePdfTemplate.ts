@@ -3,9 +3,15 @@ import type { MobileContent, PdfStyles } from '../types';
 /**
  * Default styles for the PDF template — agency-grade design system.
  *
+ * ⚠️ IMPORTANTE: html2pdf.js (html2canvas) tiene limitaciones con:
+ *   - linear-gradient → se reemplaza con color sólido
+ *   - box-shadow → eliminado
+ *   - ::before/::after pseudo-elementos → reemplazados por elementos reales
+ *   - gap en flexbox → reemplazado por margins
+ *   - flex-wrap → reemplazado por layout más simple
+ *
  * Color palette: deep navy header, clean white body, blue accents.
- * Typography scale: 20px (h1) → 14px (h2) → 12px (body) → 11px (meta).
- * Spacing: 8px grid, generous whitespace for readability on small screens.
+ * Typography scale: 22px (h1) → 14px (h2) → 13px (card title) → 12px (body) → 11px (meta).
  */
 export const DEFAULT_PDF_STYLES: PdfStyles = {
   titleColor: '#ffffff',
@@ -19,7 +25,7 @@ export const DEFAULT_PDF_STYLES: PdfStyles = {
   subtitleColor: '#cbd5e1',
   dividerColor: '#e2e8f0',
   cardBackground: '#f8fafc',
-  headerGradient: 'linear-gradient(160deg, #0f172a 0%, #1e293b 60%, #1e3a5f 100%)',
+  headerGradient: '#1e293b', // sólido — html2canvas no soporta gradient
   headerTextColor: '#f1f5f9',
   bulletColor: '#3b82f6',
   mutedColor: '#94a3b8',
@@ -28,14 +34,22 @@ export const DEFAULT_PDF_STYLES: PdfStyles = {
 
 /**
  * Template HTML/CSS mobile-first para el PDF final.
+ *
  * Diseño profesional tipo "dossier de agencia de viajes" con:
- * - Header con gradiente y badge de precio dorado
+ * - Header navy sólido y badge de precio dorado
  * - Timeline visual para itinerario (cards con número de día)
  * - Sistema de color semántico para servicios (✓ verde, ✗ rojo, ◉ azul)
  * - Cards de alojamiento con iconografía de ubicación
  * - Sección de notas con borde lateral distintivo
  *
  * Optimizado para A5 (148×210mm) a 96dpi → ~559×794px viewport.
+ *
+ * ⚠️ CSS compatible con html2pdf.js/html2canvas:
+ *   - Sin linear-gradient (se usa color sólido)
+ *   - Sin box-shadow
+ *   - Sin pseudo-elementos ::before/::after
+ *   - Sin gap en flexbox (se usa margin)
+ *   - Sin flex-wrap
  *
  * @param content - Datos estructurados del documento
  * @param styles - Opcional. Estilos CSS personalizados
@@ -64,7 +78,12 @@ export function renderMobileTemplate(content: MobileContent, styles?: PdfStyles)
               ${d.summary ? `<div class="day-summary">${d.summary}</div>` : ''}
               ${d.bullets.length ? `
                 <ul class="day-bullets">
-                  ${d.bullets.map(b => `<li>${b}</li>`).join('')}
+                  ${d.bullets.map(b => `
+                    <li>
+                      <span class="bullet-dot"></span>
+                      <span class="bullet-text">${b}</span>
+                    </li>
+                  `).join('')}
                 </ul>
               ` : ''}
             </div>
@@ -127,10 +146,12 @@ export function renderMobileTemplate(content: MobileContent, styles?: PdfStyles)
             <div class="acco-pin">&#x1F4CD;</div>
             <div class="acco-info">
               <div class="acco-name">${a.name}</div>
-              <div class="acco-meta">
+              <div class="acco-meta-line">
                 ${a.location ? `<span class="acco-location">${a.location}</span>` : ''}
-                ${a.nights ? `<span class="acco-divider">·</span><span>${a.nights}</span>` : ''}
-                ${a.board ? `<span class="acco-divider">·</span><span>${a.board}</span>` : ''}
+                ${a.location && a.nights ? '<span class="acco-divider">·</span>' : ''}
+                ${a.nights ? `<span>${a.nights}</span>` : ''}
+                ${(a.location || a.nights) && a.board ? '<span class="acco-divider">·</span>' : ''}
+                ${a.board ? `<span>${a.board}</span>` : ''}
               </div>
             </div>
           </div>
@@ -154,11 +175,11 @@ export function renderMobileTemplate(content: MobileContent, styles?: PdfStyles)
 
   // ── Footer ──────────────────────────────────────────────────
   const pageNumberHtml = content.pageNumber
-    ? `<div class="footer-bar">Página ${content.pageNumber}</div>`
+    ? `<div class="footer-bar">P&aacute;gina ${content.pageNumber}</div>`
     : '';
 
   // ═══════════════════════════════════════════════════════════
-  // HTML + CSS
+  // HTML + CSS (html2pdf.js / html2canvas compatible)
   // ═══════════════════════════════════════════════════════════
   return `<!DOCTYPE html>
 <html lang="es">
@@ -174,12 +195,13 @@ export function renderMobileTemplate(content: MobileContent, styles?: PdfStyles)
     line-height: 1.55;
     color: ${s.textColor};
     background: ${s.backgroundColor};
+    width: 559px;
     -webkit-font-smoothing: antialiased;
   }
 
   /* ── Header ───────────────────────────────────────────── */
   .header {
-    background: ${s.headerGradient ?? s.accentColor};
+    background: ${s.headerGradient ?? '#1e293b'};
     color: ${s.headerTextColor ?? '#ffffff'};
     text-align: center;
     padding: 28px 20px 24px;
@@ -211,15 +233,18 @@ export function renderMobileTemplate(content: MobileContent, styles?: PdfStyles)
     border-radius: 20px;
     margin-top: 10px;
     letter-spacing: 0.2px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
   }
 
   /* ── Sections ─────────────────────────────────────────── */
   .section { margin: 20px 16px 24px; }
   .section-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    display: table;
+  }
+  .section-header > * {
+    display: table-cell;
+    vertical-align: middle;
+  }
+  .section-header {
     font-size: 14px;
     font-weight: 700;
     color: ${s.headingColor};
@@ -228,23 +253,31 @@ export function renderMobileTemplate(content: MobileContent, styles?: PdfStyles)
     border-bottom: 2px solid ${s.dividerColor ?? '#e2e8f0'};
     padding-bottom: 8px;
     margin-bottom: 14px;
+    width: 100%;
   }
-  .section-icon { font-size: 16px; }
+  .section-icon {
+    font-size: 16px;
+    width: 26px;
+    text-align: center;
+  }
 
   /* ── Timeline / Day Cards ─────────────────────────────── */
-  .timeline { position: relative; }
   .day-card {
-    display: flex;
-    gap: 12px;
+    display: table;
+    width: 100%;
+    table-layout: fixed;
     background: ${s.cardBackground ?? '#f8fafc'};
     border-radius: ${s.cardRadius ?? 8}px;
     padding: 12px 14px;
     margin-bottom: 10px;
     border: 1px solid ${s.dividerColor ?? '#e2e8f0'};
-    transition: none;
   }
   .day-marker {
-    flex-shrink: 0;
+    display: table-cell;
+    vertical-align: top;
+    width: 42px;
+  }
+  .day-marker-inner {
     width: 30px;
     height: 30px;
     border-radius: 50%;
@@ -252,12 +285,11 @@ export function renderMobileTemplate(content: MobileContent, styles?: PdfStyles)
     color: #ffffff;
     font-size: 13px;
     font-weight: 800;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-top: 2px;
+    line-height: 30px;
+    text-align: center;
+    vertical-align: middle;
   }
-  .day-body { flex: 1; min-width: 0; }
+  .day-body { display: table-cell; vertical-align: top; }
   .day-title {
     font-size: 14px;
     font-weight: 700;
@@ -272,39 +304,40 @@ export function renderMobileTemplate(content: MobileContent, styles?: PdfStyles)
     line-height: 1.45;
   }
   .day-bullets {
-    padding-left: 16px;
     list-style: none;
+    padding: 0;
+    margin: 0;
   }
   .day-bullets li {
     font-size: 12px;
     color: ${s.textColor};
     margin-bottom: 3px;
     line-height: 1.45;
-    position: relative;
-    padding-left: 4px;
   }
-  .day-bullets li::before {
-    content: '';
-    position: absolute;
-    left: -14px;
-    top: 6px;
+  .bullet-dot {
+    display: inline-block;
     width: 6px;
     height: 6px;
     border-radius: 50%;
     background: ${s.bulletColor ?? s.accentColor};
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  .bullet-text {
+    vertical-align: middle;
   }
 
   /* ── Services Grid ────────────────────────────────────── */
   .services-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+    display: block;
   }
   .service-block {
     border-radius: ${s.cardRadius ?? 8}px;
     padding: 10px 14px;
+    margin-bottom: 10px;
     border: 1px solid ${s.dividerColor ?? '#e2e8f0'};
   }
+  .service-block:last-child { margin-bottom: 0; }
   .service-included {
     background: #f0fdf4;
     border-color: #bbf7d0;
@@ -335,18 +368,27 @@ export function renderMobileTemplate(content: MobileContent, styles?: PdfStyles)
   }
 
   /* ── Accommodations ───────────────────────────────────── */
-  .acco-list { display: flex; flex-direction: column; gap: 8px; }
+  .acco-list { display: block; }
   .acco-card {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
+    display: table;
+    width: 100%;
+    table-layout: fixed;
     background: ${s.cardBackground ?? '#f8fafc'};
     border-radius: ${s.cardRadius ?? 8}px;
     padding: 10px 14px;
+    margin-bottom: 8px;
     border: 1px solid ${s.dividerColor ?? '#e2e8f0'};
   }
-  .acco-pin { font-size: 18px; line-height: 1; margin-top: 1px; }
-  .acco-info { flex: 1; min-width: 0; }
+  .acco-card:last-child { margin-bottom: 0; }
+  .acco-pin {
+    display: table-cell;
+    vertical-align: top;
+    font-size: 18px;
+    line-height: 1;
+    width: 28px;
+    text-align: center;
+  }
+  .acco-info { display: table-cell; vertical-align: top; }
   .acco-name {
     font-size: 13px;
     font-weight: 700;
@@ -354,17 +396,15 @@ export function renderMobileTemplate(content: MobileContent, styles?: PdfStyles)
     line-height: 1.3;
     margin-bottom: 3px;
   }
-  .acco-meta {
+  .acco-meta-line {
     font-size: 11px;
     color: ${s.mutedColor ?? s.textColor};
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    white-space: nowrap;
   }
-  .acco-divider { opacity: 0.4; }
+  .acco-divider { margin: 0 4px; opacity: 0.4; }
 
   /* ── Notes ────────────────────────────────────────────── */
-  .notes-list { display: flex; flex-direction: column; gap: 8px; }
+  .notes-list { display: block; }
   .note-item {
     font-size: 12px;
     color: ${s.textColor};
@@ -372,9 +412,11 @@ export function renderMobileTemplate(content: MobileContent, styles?: PdfStyles)
     border-left: 3px solid ${s.accentColor};
     border-radius: 0 ${s.cardRadius ?? 8}px ${s.cardRadius ?? 8}px 0;
     padding: 8px 12px;
+    margin-bottom: 8px;
     line-height: 1.5;
     font-style: italic;
   }
+  .note-item:last-child { margin-bottom: 0; }
 
   /* ── Footer ───────────────────────────────────────────── */
   .footer-bar {

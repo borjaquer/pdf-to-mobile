@@ -34,7 +34,7 @@ REGLAS DE DISEÑO (estilos):
 - priceColor = fondo del badge de precio (si no se especifica, usa accentColor)
 - backgroundColor = fondo de toda la página
 - cardBackground = fondo de las cards de día y alojamiento
-- headerGradient = gradiente CSS de fondo del header (ej. "linear-gradient(160deg, #0f172a, #1e3a5f)")
+- headerGradient = color sólido de fondo del header (ej. "#1e293b"), NO uses linear-gradient — html2pdf.js no soporta gradientes
 - headerTextColor = color del texto dentro del header
 - bulletColor = color de los bullets (círculos) en listas
 - mutedColor = color de texto secundario (metadatos, fechas, subtítulos)
@@ -59,6 +59,11 @@ REGLAS PARA USAR RESULTADOS DE BÚSQUEDA WEB (cuando se proporcionen):
 - Si los resultados contienen datos factuales (clima, lugares, precios), puedes usarlos para enriquecer el contenido
 - NO copies texto literal de los resultados web; adáptalo al tono y formato del documento
 - Si no hay resultados o no son relevantes, ignóralos y aplica la instrucción del usuario normalmente
+
+⚠️ LIMITACIONES DE html2pdf.js (NO USES ESTAS PROPIEDADES):
+- NO uses linear-gradient, radial-gradient ni ningún tipo de gradiente CSS — solo colores sólidos
+- NO uses box-shadow — no se renderiza correctamente en el PDF
+- El resto de propiedades CSS estándar (border, border-radius, padding, margin, font-size, color, background sólido) funcionan correctamente
 
 FORMATO DE RESPUESTA:
 Responde ÚNICAMENTE con JSON válido, sin markdown, sin \`\`\`json, sin texto adicional.
