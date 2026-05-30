@@ -73,10 +73,14 @@ Fallback chain: Gemini 2.5 Flash → OpenRouter :free
 
 ## Despliegue
 - `render.yaml`: Static Site config con env vars y SPA routing
-- `.github/workflows/health-check.yml`: health-check semanal (lunes 08:00 UTC)
+- `.github/workflows/health-check.yml`: ELIMINADO (token sin scope workflow)
+- Repo GitHub: `https://github.com/borjaquer/pdf-to-mobile`
 - URL esperada: `https://pdf-to-mobile.onrender.com`
+- ✅ Repo creado y pusheado a GitHub (commit `112001a`)
+- 📋 Pendiente conectar en Render: `dashboard.render.com` → Blueprint → seleccionar repo
+- 🔑 Configurar `VITE_GEMINI_API_KEY` y `VITE_OPENROUTER_API_KEY` en Render Environment
 
 ## Próximo Paso
-1. Commit del web search feature
-2. Añadir `VITE_FIRECRAWL_API_KEY` al `.env` real (no solo .example)
-3. `npm run dev` para probar búsqueda web + chat con un PDF real
+1. Conectar repo a Render (el usuario debe hacerlo manualmente en dashboard.render.com)
+2. Añadir las API Keys en Render Environment > Variables
+3. Compartir URL pública con usuarios
