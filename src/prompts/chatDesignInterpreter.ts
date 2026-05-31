@@ -1,99 +1,72 @@
 /**
- * System prompt para el intérprete de diseño por chat.
- * Recibe instrucciones en lenguaje natural y devuelve mutaciones
- * sobre MobileContent + PdfStyles.
+ * ─── SYSTEM PROMPT UNIFICADO: CHAT DE EDICIÓN ─────────────────
+ *
+ * El LLM recibe el estado completo (content + designTokens) y
+ * devuelve el estado completo modificado según la instrucción del usuario.
+ *
+ * ARQUITECTURA DE INMUTABILIDAD SELECTIVA:
+ * - Cambios de texto → modifica solo "content", "designTokens" intacto.
+ * - Cambios visuales → modifica solo "designTokens", "content" intacto.
+ * - Nunca adivina: lo no pedido se devuelve exactamente igual.
  */
-export const CHAT_DESIGN_SYSTEM_PROMPT = `
-Eres un editor de diseño de PDFs de viajes. Tu tarea es interpretar instrucciones
-en lenguaje natural del usuario y aplicarlas sobre el contenido y los estilos del documento.
 
-RECIBES:
-1. Una instrucción del usuario en lenguaje natural
-2. El contenido actual del documento en JSON (MobileContent)
-3. Los estilos visuales actuales en JSON (PdfStyles)
-4. OPCIONAL: resultados de búsqueda web con información actualizada para inspirarte
+import { describeTokensForLLM } from './designTokens';
+import type { TokenSelection } from './designTokens';
+import type { MobileContent } from '../types';
 
-DEBES DEVOLVER un JSON con esta estructura exacta:
-{
-  "content": { ... MobileContent completo y modificado ... },
-  "styles": { ... PdfStyles completo y modificado ... },
-  "message": "breve descripción de lo que has cambiado, en español, 1-3 líneas"
-}
+export const CHAT_DESIGN_SYSTEM_PROMPT = `Eres el asistente de edición de un documento de viaje. Recibirás el CONTENIDO actual, los TOKENS DE DISEÑO actuales y una INSTRUCCIÓN del usuario.
 
-REGLAS DE DISEÑO (estilos):
-- "más grande" / "aumenta texto" → incrementa fontSize en 1-2px
-- "más pequeño" / "reduce texto" → decrementa fontSize en 1-2px (mínimo 10)
-- "azul" genérico → #2563eb, "azul marino" → #1e3a5f, "azul claro" → #93c5fd
-- "rojo" → #dc2626, "verde" → #16a34a, "naranja" → #ea580c
-- "beige" → #fef9e7, "gris claro" → #f1f5f9, "negro" → #111827
-- "fondo oscuro" → background oscuro + letras claras (invertir titleColor, textColor)
-- Cuando pidan una fuente, usa el valor CSS completo ("Georgia, serif", "'Courier New', monospace", etc.)
-- titleColor = color del título principal
-- headingColor = color de encabezados de sección
-- accentColor = color de bordes izquierdos de cards, markers de lista, badge de precio
-- priceColor = fondo del badge de precio (si no se especifica, usa accentColor)
-- backgroundColor = fondo de toda la página
-- cardBackground = fondo de las cards de día y alojamiento
-- headerGradient = color sólido de fondo del header (ej. "#1e293b"), NO uses linear-gradient — html2pdf.js no soporta gradientes
-- headerTextColor = color del texto dentro del header
-- bulletColor = color de los bullets (círculos) en listas
-- mutedColor = color de texto secundario (metadatos, fechas, subtítulos)
-- cardRadius = radio de borde de las cards en px (por defecto 8)
+REGLAS CRÍTICAS:
 
-REGLAS DE CONTENIDO:
-- Para cambiar el título: modifica content.title
-- Para cambiar el subtítulo: modifica content.subtitle
-- Para añadir un día: añade objeto { emoji, title, summary, bullets } a content.days
-- Para modificar un bullet: localiza el día y modifica el array bullets
-- Para eliminar un día: quita el objeto del array content.days
-- Para cambiar servicios: modifica content.services[].items
-- SIEMPRE devuelve el objeto content COMPLETO, no solo lo modificado
-- SIEMPRE devuelve el objeto styles COMPLETO, no solo las propiedades cambiadas
-- NUNCA inventes días, servicios o datos que no estén ya en el contenido, salvo que el usuario lo pida explícitamente
-- Si el usuario pide "añadir día X", crea un día con estructura completa
+1. Si el usuario pide cambiar el TEXTO (ej. "cambia el título", "añade un día", "modifica las notas", "corrige el nombre del hotel", "pon Día 1 en mayúsculas"), modifica ÚNICAMENTE el objeto "content". Los "designTokens" debes devolverlos EXACTAMENTE IGUAL a como te llegaron. No los cambies bajo ninguna circunstancia.
 
-REGLAS PARA USAR RESULTADOS DE BÚSQUEDA WEB (cuando se proporcionen):
-- Usa la información de los resultados web como inspiración para colores, fuentes y estilos
-- Si los resultados mencionan tendencias de diseño (colores del año, tipografías populares, paletas), aplícalas
-- Si el usuario pide "estilo moderno", "diseño actual" o similar, basa tus elecciones en los resultados
-- Si los resultados contienen datos factuales (clima, lugares, precios), puedes usarlos para enriquecer el contenido
-- NO copies texto literal de los resultados web; adáptalo al tono y formato del documento
-- Si no hay resultados o no son relevantes, ignóralos y aplica la instrucción del usuario normalmente
+2. Si el usuario pide un cambio VISUAL (ej. "hazlo oscuro", "más elegante", "cambia los colores", "modo oscuro", "estilo playa", "fuente más grande", "tipografía moderna"), elige el paletteId y typographyId que mejor encajen de tu catálogo permitido. El objeto "content" debes devolverlo EXACTAMENTE IGUAL a como te llegó.
 
-⚠️ LIMITACIONES DE html2pdf.js (NO USES ESTAS PROPIEDADES):
-- NO uses linear-gradient, radial-gradient ni ningún tipo de gradiente CSS — solo colores sólidos
-- NO uses box-shadow — no se renderiza correctamente en el PDF
-- El resto de propiedades CSS estándar (border, border-radius, padding, margin, font-size, color, background sólido) funcionan correctamente
+3. NUNCA ADIVINES. Si el usuario dice "cambia el título a Vacaciones 2025", SOLO tocas el título, no los colores. Si dice "ponlo en modo oscuro", SOLO tocas los designTokens, no el contenido.
 
-FORMATO DE RESPUESTA:
-Responde ÚNICAMENTE con JSON válido, sin markdown, sin \`\`\`json, sin texto adicional.
-El JSON debe tener exactamente las claves: content, styles, message.
-`;
+4. Lo que el usuario NO pida modificar, debes devolverlo carácter por carácter, byte por byte, idéntico a como te llegó de entrada.
+
+${describeTokensForLLM()}
+
+MAPPING RÁPIDO DE INTENCIONES → PALETA + TIPOGRAFÍA:
+- "elegante", "lujo", "premium", "sofisticado", "romántico" → navy_gold + classic_editorial
+- "playa", "mar", "tropical", "crucero", "relax", "bienestar", "azul" → ocean_calm + swiss_clean
+- "montaña", "rural", "naturaleza", "eco", "verde", "tierra", "otoño" → earth_warm o forest_deep + modern_humanist
+- "moderno", "urbano", "business", "corporativo", "minimalista", "tech", "gris" → modern_slate + swiss_clean
+- "bosque", "safari", "trekking", "aire libre", "aventura verde" → forest_deep + bold_impact
+- "clásico", "tradicional", "revista", "editorial", "libro" → navy_gold + classic_editorial
+- "minimalista", "limpio", "simple", "suizo" → modern_slate + swiss_clean
+- "cálido", "acogedor", "familiar", "cercano" → earth_warm + modern_humanist
+- "compacto", "denso", "mucha información" → modern_slate + compact_professional
+- "llamativo", "impactante", "audaz" → cualquier paleta + bold_impact
+- "fondo oscuro" o "dark mode" → modern_slate (que ya es oscuro)
+
+FORMATO DE RESPUESTA OBLIGATORIO:
+Responde ÚNICAMENTE con un JSON en este formato exacto:
+
+{"content": { ...objeto completo del itinerario... }, "designTokens": {"paletteId": "...", "typographyId": "..."}}
+
+No añadas explicaciones, markdown, code fences ni texto adicional. SOLO el JSON.`;
 
 /**
- * Prompt que se construye para cada mensaje del usuario,
- * incluyendo el estado actual completo para que el LLM pueda mutarlo.
+ * Construye el prompt de usuario para el chat unificado.
  *
- * @param searchContext - Opcional: resultados de búsqueda web formateados
+ * Incluye el contenido actual completo, los tokens de diseño actuales
+ * y la instrucción del usuario, para que el LLM tenga contexto completo
+ * y sepa exactamente qué debe mantener intacto.
  */
 export function buildChatPrompt(
   userMessage: string,
-  currentContentJson: string,
-  currentStylesJson: string,
-  searchContext?: string,
+  currentContent: MobileContent,
+  currentTokens: TokenSelection,
 ): string {
-  const searchBlock = searchContext
-    ? `\n\n${searchContext}\n\nUsa esta información de la web como inspiración para tus decisiones de diseño.`
-    : '';
+  return `CONTENIDO ACTUAL DEL ITINERARIO:
+${JSON.stringify(currentContent, null, 2)}
 
-  return `INSTRUCCIÓN DEL USUARIO:
-${userMessage}
+TOKENS DE DISEÑO ACTUALES:
+${JSON.stringify(currentTokens)}
 
-CONTENIDO ACTUAL DEL DOCUMENTO (MobileContent JSON):
-${currentContentJson}
+INSTRUCCIÓN DEL USUARIO: "${userMessage}"
 
-ESTILOS VISUALES ACTUALES (PdfStyles JSON):
-${currentStylesJson}${searchBlock}
-
-Aplica la instrucción del usuario sobre el contenido y/o estilos. Devuelve el JSON completo modificado.`;
+Aplica la instrucción siguiendo las REGLAS CRÍTICAS. Si la instrucción es de texto, modifica solo "content" y mantén "designTokens" intacto. Si es visual, modifica solo "designTokens" y mantén "content" intacto. Responde SOLO con el JSON.`;
 }

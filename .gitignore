@@ -34,3 +34,6 @@ desktop.ini
 
 # PDF samples (test data)
 *.pdf
+
+# Firecrawl cache
+.firecrawl/

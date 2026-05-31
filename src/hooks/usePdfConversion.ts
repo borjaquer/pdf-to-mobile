@@ -5,9 +5,21 @@ import { reformatWithDeepSeek } from '../services/deepseekApi';
 import { reformatWithOpenRouter } from '../services/openRouterApi';
 import { generatePdf } from '../services/pdfGenerator';
 import { interpretChatInstruction } from '../services/chatInterpreter';
-import { DEFAULT_PDF_STYLES } from '../templates/mobilePdfTemplate';
-import { searchWeb, detectSearchIntent, formatSearchContext } from '../services/webSearch';
+import { DEFAULT_PDF_STYLES } from '../utils/defaultPdfStyles';
 import { isPrimaryAICircuitOpen, recordPrimaryAIFailure } from '../services/circuitBreaker';
+import type { TokenSelection } from '../prompts/designTokens';
+
+/**
+ * Tokens de diseño iniciales. Se aplican sobre DEFAULT_PDF_STYLES
+ * para derivar los estilos visuales por defecto.
+ *
+ * navy_gold + classic_editorial = premium por defecto, coherente
+ * con el diseño "agency-grade" que ya usamos.
+ */
+const INITIAL_TOKENS: TokenSelection = {
+  paletteId: 'navy_gold',
+  typographyId: 'classic_editorial',
+};
 
 /**
  * Hook principal que orquesta el pipeline completo de conversión:
@@ -18,20 +30,24 @@ import { isPrimaryAICircuitOpen, recordPrimaryAIFailure } from '../services/circ
  *
  * Fallback chain en reformatting: DeepSeek V3 → OpenRouter :free
  *
- * También expone regeneratePdf() para regenerar el PDF con contenido
- * y estilos editados sin volver a llamar a la IA.
+ * Chat de diseño: sistema UNIFICADO de edición — el LLM recibe
+ * el estado completo (content + designTokens) y devuelve el estado
+ * completo modificado según la instrucción del usuario.
+ * Solo cambia lo que el usuario pide; el resto se mantiene inmutable.
  */
 export function usePdfConversion() {
   const [state, setState] = useState<PdfConversionState>({ step: 'idle' });
   const [mobileContent, setMobileContent] = useState<MobileContent | null>(null);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfStyles, setPdfStyles] = useState<PdfStyles>({ ...DEFAULT_PDF_STYLES });
+  const [designTokens, setDesignTokens] = useState<TokenSelection>({ ...INITIAL_TOKENS });
   const [isProcessing, setIsProcessing] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
 
-  // Ref para acceder al contenido actual sin dependencias de closure (evita stale closure en regeneratePdf)
+  // Refs para acceder al estado actual sin dependencias de closure (evita stale closure)
   const contentRef = useRef<MobileContent | null>(null);
   const stylesRef = useRef<PdfStyles>(DEFAULT_PDF_STYLES);
+  const tokensRef = useRef<TokenSelection>({ ...INITIAL_TOKENS });
 
   /**
    * Setter para que el editor pueda actualizar el contenido paso a paso.
@@ -56,8 +72,10 @@ export function usePdfConversion() {
     setMobileContent(null);
     setPdfBlob(null);
     setPdfStyles({ ...DEFAULT_PDF_STYLES });
+    setDesignTokens({ ...INITIAL_TOKENS });
     contentRef.current = null;
     stylesRef.current = { ...DEFAULT_PDF_STYLES };
+    tokensRef.current = { ...INITIAL_TOKENS };
 
     let extractedText = '';
 
@@ -145,8 +163,15 @@ export function usePdfConversion() {
   }, []);
 
   /**
-   * Interpreta una instrucción de chat en lenguaje natural y aplica
-   * los cambios al contenido y estilos. Después regenera el PDF automáticamente.
+   * Interpreta una instrucción de chat en lenguaje natural usando el
+   * sistema UNIFICADO de edición.
+   *
+   * El LLM recibe el estado completo (content + designTokens) y devuelve
+   * el estado completo modificado según la instrucción del usuario.
+   *
+   * ARQUITECTURA DE INMUTABILIDAD SELECTIVA:
+   * - Cambios de texto → modifica solo "content", "designTokens" intacto.
+   * - Cambios visuales → modifica solo "designTokens", "content" intacto.
    */
   const applyChatChanges = useCallback(async (userMessage: string): Promise<string> => {
     const currentContent = contentRef.current;
@@ -159,33 +184,24 @@ export function usePdfConversion() {
     setChatError(null);
 
     try {
-      // ── Detectar intención de búsqueda web ──────────────────
-      let searchContext: string | undefined;
-      const searchQuery = detectSearchIntent(userMessage);
-
-      if (searchQuery) {
-        console.log('[usePdfConversion] Detectada intención de búsqueda:', searchQuery);
-        const results = await searchWeb(searchQuery, 5);
-        if (results.length > 0) {
-          searchContext = formatSearchContext(results);
-          console.log('[usePdfConversion] Resultados web obtenidos:', results.length);
-        } else {
-          console.log('[usePdfConversion] Sin resultados web (o API key no configurada)');
-        }
-      }
-
       const result = await interpretChatInstruction(
         userMessage,
         currentContent,
         stylesRef.current,
-        searchContext,
+        tokensRef.current,
       );
 
+      // Actualizar estado de contenido
       contentRef.current = result.content;
       setMobileContent(result.content);
 
+      // Actualizar estado de estilos
       stylesRef.current = result.styles;
       setPdfStyles(result.styles);
+
+      // Actualizar estado de tokens de diseño
+      tokensRef.current = result.tokens;
+      setDesignTokens(result.tokens);
 
       setState(prev => ({ step: 'generating', rateLimitWaitMs: prev.rateLimitWaitMs }));
 
@@ -193,11 +209,6 @@ export function usePdfConversion() {
         const blob = await generatePdf(result.content, result.styles);
         setPdfBlob(blob);
         setState({ step: 'done' });
-
-        // ── Mensaje enriquecido si se usó búsqueda ────────────
-        if (searchContext) {
-          return `${result.message}\n\n🔍 Se consultó la web para inspirar el diseño.`;
-        }
         return result.message;
       } catch (pdfErr) {
         console.error('[usePdfConversion] Error al regenerar PDF tras chat:', pdfErr);
@@ -223,10 +234,12 @@ export function usePdfConversion() {
     setMobileContent(null);
     setPdfBlob(null);
     setPdfStyles({ ...DEFAULT_PDF_STYLES });
+    setDesignTokens({ ...INITIAL_TOKENS });
     setIsProcessing(false);
     setChatError(null);
     contentRef.current = null;
     stylesRef.current = { ...DEFAULT_PDF_STYLES };
+    tokensRef.current = { ...INITIAL_TOKENS };
   }, []);
 
   return {
@@ -234,6 +247,7 @@ export function usePdfConversion() {
     mobileContent,
     pdfBlob,
     pdfStyles,
+    designTokens,
     isProcessing,
     chatError,
     startConversion,

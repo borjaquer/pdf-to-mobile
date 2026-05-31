@@ -63,7 +63,7 @@ export interface PdfStyles {
   accentColor: string;
   /** Fondo general del documento */
   backgroundColor: string;
-  /** Familia tipográfica (system-ui por defecto) */
+  /** Familia tipográfica para cuerpo de texto (system-ui por defecto) */
   fontFamily: string;
   /** Tamaño base de fuente en px */
   fontSize: number;
@@ -85,6 +85,10 @@ export interface PdfStyles {
   mutedColor?: string;
   /** Radio de borde de las cards (px) */
   cardRadius?: number;
+  /** [TOKEN] Familia tipográfica para headings (h1, section headers) */
+  headingFontFamily?: string;
+  /** [TOKEN] Peso tipográfico para headings (ej. "700", "800") */
+  headingFontWeight?: string;
 }
 
 export interface GeminiResponse {

@@ -1,20 +1,33 @@
 import OpenAI from 'openai';
 import type { MobileContent, PdfStyles } from '../types';
 import { CHAT_DESIGN_SYSTEM_PROMPT, buildChatPrompt } from '../prompts/chatDesignInterpreter';
+import { applyTokens, getPalette, getTypography } from '../prompts/designTokens';
+import type { TokenSelection } from '../prompts/designTokens';
 import { isPrimaryAICircuitOpen, recordPrimaryAIFailure, recordPrimaryAISuccess } from './circuitBreaker';
 import { validateMobileContent } from '../utils/validateContent';
 
 /**
- * Servicio que interpreta instrucciones de diseño en lenguaje natural
- * y las traduce a mutaciones sobre MobileContent + PdfStyles.
+ * ─── SERVICIO UNIFICADO DE CHAT ──────────────────────────────
  *
- * Usa DeepSeek V3 como primario, con fallback automático a OpenRouter :free
- * con cadena multi-modelo (prueba varios hasta encontrar uno disponible).
+ * El LLM recibe el estado completo (content + designTokens) y devuelve
+ * el estado completo modificado según la instrucción del usuario.
+ *
+ * ARQUITECTURA DE INMUTABILIDAD SELECTIVA:
+ * - Cambios de texto → modifica solo "content", "designTokens" intacto.
+ * - Cambios visuales → modifica solo "designTokens", "content" intacto.
+ * - Nunca adivina: lo no pedido se devuelve exactamente igual.
  */
+
+// ── Respuesta unificada del LLM ─────────────────────────────
+interface UnifiedChatResponse {
+  content: MobileContent;
+  designTokens: TokenSelection;
+}
 
 interface ChatInterpretation {
   content: MobileContent;
   styles: PdfStyles;
+  tokens: TokenSelection;
   message: string;
 }
 
@@ -22,11 +35,11 @@ interface ChatInterpretation {
 const DEEPSEEK_KEY = import.meta.env.VITE_DEEPSEEK_API_KEY as string;
 const DEEPSEEK_BASE = 'https://api.deepseek.com';
 
-async function interpretWithDeepSeek(
+async function callDeepSeek(
   userMessage: string,
   currentContent: MobileContent,
+  currentTokens: TokenSelection,
   currentStyles: PdfStyles,
-  searchContext?: string,
 ): Promise<ChatInterpretation> {
   if (!DEEPSEEK_KEY) throw new Error('VITE_DEEPSEEK_API_KEY no configurada');
 
@@ -37,12 +50,7 @@ async function interpretWithDeepSeek(
     maxRetries: 1,
   });
 
-  const prompt = buildChatPrompt(
-    userMessage,
-    JSON.stringify(currentContent, null, 2),
-    JSON.stringify(currentStyles, null, 2),
-    searchContext,
-  );
+  const prompt = buildChatPrompt(userMessage, currentContent, currentTokens);
 
   const result = await openai.chat.completions.create({
     model: 'deepseek-chat',
@@ -50,23 +58,20 @@ async function interpretWithDeepSeek(
       { role: 'system', content: CHAT_DESIGN_SYSTEM_PROMPT },
       { role: 'user', content: prompt },
     ],
-    temperature: 0.2,
-    max_tokens: 8192,
+    temperature: 0.1,
+    max_tokens: 4096,
     response_format: { type: 'json_object' },
   });
 
   const rawJson = result.choices[0]?.message?.content;
   if (!rawJson) throw new Error('DeepSeek devolvió respuesta vacía');
 
-  const parsed = JSON.parse(rawJson) as ChatInterpretation;
-  validateInterpretation(parsed);
-  return parsed;
+  return parseUnifiedResponse(rawJson, currentContent, currentTokens, currentStyles);
 }
 
 // ── OpenRouter fallback (cadena multi-modelo) ────────────────
 const OR_KEY = import.meta.env.VITE_OPENROUTER_API_KEY as string;
 
-/** Modelos :free en orden de preferencia. openrouter/free primero: máxima disponibilidad. */
 const OR_FALLBACK_MODELS = [
   'openrouter/free',
   'google/gemma-4-31b-it:free',
@@ -79,11 +84,11 @@ function isRateLimitError(err: unknown): boolean {
   return msg.includes('429') || msg.includes('rate') || msg.includes('quota');
 }
 
-async function interpretWithOpenRouter(
+async function callOpenRouter(
   userMessage: string,
   currentContent: MobileContent,
+  currentTokens: TokenSelection,
   currentStyles: PdfStyles,
-  searchContext?: string,
 ): Promise<ChatInterpretation> {
   if (!OR_KEY) throw new Error('VITE_OPENROUTER_API_KEY no configurada');
 
@@ -94,13 +99,7 @@ async function interpretWithOpenRouter(
     maxRetries: 0,
   });
 
-  const prompt = buildChatPrompt(
-    userMessage,
-    JSON.stringify(currentContent, null, 2),
-    JSON.stringify(currentStyles, null, 2),
-    searchContext,
-  );
-
+  const prompt = buildChatPrompt(userMessage, currentContent, currentTokens);
   let lastError: unknown;
 
   for (const model of OR_FALLBACK_MODELS) {
@@ -112,18 +111,16 @@ async function interpretWithOpenRouter(
           { role: 'system', content: CHAT_DESIGN_SYSTEM_PROMPT },
           { role: 'user', content: prompt },
         ],
-        temperature: 0.2,
-        max_tokens: 8192,
+        temperature: 0.1,
+        max_tokens: 4096,
         response_format: { type: 'json_object' },
       });
 
       const rawJson = completion.choices[0]?.message?.content;
       if (!rawJson) throw new Error(`OpenRouter (${model}) devolvió respuesta vacía`);
 
-      const parsed = JSON.parse(rawJson) as ChatInterpretation;
-      validateInterpretation(parsed);
       console.log(`[chatInterpreter] OpenRouter éxito con: ${model}`);
-      return parsed;
+      return parseUnifiedResponse(rawJson, currentContent, currentTokens, currentStyles);
     } catch (err) {
       lastError = err;
       if (isRateLimitError(err)) {
@@ -137,47 +134,110 @@ async function interpretWithOpenRouter(
   throw lastError ?? new Error('OpenRouter: todos los modelos fallaron');
 }
 
-// ── Validación ──────────────────────────────────────────────
-function validateInterpretation(result: ChatInterpretation): void {
-  // Delegar en validateMobileContent para validación completa de content
-  result.content = validateMobileContent(result.content);
+// ── Parseo y validación de la respuesta unificada ────────────
 
-  if (!result.styles || typeof result.styles !== 'object') {
-    throw new Error('Respuesta inválida: falta "styles"');
+function parseUnifiedResponse(
+  rawJson: string,
+  currentContent: MobileContent,
+  currentTokens: TokenSelection,
+  currentStyles: PdfStyles,
+): ChatInterpretation {
+  let parsed: UnifiedChatResponse;
+
+  try {
+    parsed = JSON.parse(rawJson) as UnifiedChatResponse;
+  } catch {
+    throw new Error('El LLM devolvió JSON inválido');
   }
-  if (typeof result.styles.fontSize !== 'number') {
-    throw new Error('Respuesta inválida: "styles.fontSize" no es número');
+
+  // Validar que existe el objeto content
+  if (!parsed.content || typeof parsed.content !== 'object') {
+    throw new Error('Respuesta inválida: falta "content" o no es un objeto');
   }
+
+  // Validar que existe designTokens con paletteId y typographyId
+  if (!parsed.designTokens || typeof parsed.designTokens !== 'object') {
+    throw new Error('Respuesta inválida: falta "designTokens" o no es un objeto');
+  }
+  if (typeof parsed.designTokens.paletteId !== 'string' || !parsed.designTokens.paletteId) {
+    throw new Error('Respuesta inválida: falta "designTokens.paletteId" o no es string');
+  }
+  if (typeof parsed.designTokens.typographyId !== 'string' || !parsed.designTokens.typographyId) {
+    throw new Error('Respuesta inválida: falta "designTokens.typographyId" o no es string');
+  }
+
+  // Validar que content cumple la estructura MobileContent
+  const validatedContent = validateMobileContent(parsed.content);
+
+  // Validar que los IDs de tokens existen en el catálogo
+  const palette = getPalette(parsed.designTokens.paletteId);
+  const typography = getTypography(parsed.designTokens.typographyId);
+
+  // Detectar qué cambió para el mensaje al usuario
+  const contentChanged = JSON.stringify(validatedContent) !== JSON.stringify(currentContent);
+  const tokensChanged =
+    parsed.designTokens.paletteId !== currentTokens.paletteId ||
+    parsed.designTokens.typographyId !== currentTokens.typographyId;
+
+  let message: string;
+  if (contentChanged && !tokensChanged) {
+    message = 'Contenido actualizado correctamente.';
+  } else if (!contentChanged && tokensChanged) {
+    message = `Diseño actualizado: paleta "${palette.name}" + tipografía "${typography.name}".`;
+  } else if (contentChanged && tokensChanged) {
+    message = `Contenido y diseño actualizados: paleta "${palette.name}" + tipografía "${typography.name}".`;
+  } else {
+    message = 'No se detectaron cambios. ¿Puedes ser más específico?';
+  }
+
+  return {
+    content: validatedContent,
+    styles: applyTokens(currentStyles, palette, typography),
+    tokens: parsed.designTokens,
+    message,
+  };
 }
 
-// ── API pública ─────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// API PÚBLICA
+// ═══════════════════════════════════════════════════════════════
 
 /**
- * Interpreta una instrucción de diseño en lenguaje natural.
- * Intenta con DeepSeek primero; si falla, usa OpenRouter con cadena multi-modelo.
+ * Interpreta una instrucción de chat en lenguaje natural usando el
+ * sistema UNIFICADO de edición.
  *
- * @param searchContext - Opcional: resultados de búsqueda web para enriquecer la interpretación
- * @returns Nuevo contenido, nuevos estilos y mensaje explicativo
+ * El LLM recibe el estado completo (content + designTokens) y devuelve
+ * el estado completo modificado. Solo cambia lo que el usuario pide;
+ * el resto se mantiene inmutable.
+ *
+ * @param userMessage - Instrucción del usuario en lenguaje natural
+ * @param currentContent - Contenido actual del itinerario
+ * @param currentStyles - Estilos actuales (PdfStyles)
+ * @param currentTokens - Tokens de diseño actuales (paletteId + typographyId)
+ * @returns Nuevo contenido + nuevos estilos + nuevos tokens + mensaje
  */
 export async function interpretChatInstruction(
   userMessage: string,
   currentContent: MobileContent,
   currentStyles: PdfStyles,
-  searchContext?: string,
+  currentTokens: TokenSelection,
 ): Promise<ChatInterpretation> {
+  let interpretation: ChatInterpretation;
+
   // ── Circuit breaker: saltar DeepSeek si el circuito está abierto ──
   if (isPrimaryAICircuitOpen()) {
     console.log('[chatInterpreter] Circuit breaker abierto — saltando DeepSeek');
-    return await interpretWithOpenRouter(userMessage, currentContent, currentStyles, searchContext);
+    interpretation = await callOpenRouter(userMessage, currentContent, currentTokens, currentStyles);
+  } else {
+    try {
+      interpretation = await callDeepSeek(userMessage, currentContent, currentTokens, currentStyles);
+      recordPrimaryAISuccess();
+    } catch (deepseekErr) {
+      recordPrimaryAIFailure();
+      console.warn('[chatInterpreter] DeepSeek falló, intentando OpenRouter...', String(deepseekErr).slice(0, 150));
+      interpretation = await callOpenRouter(userMessage, currentContent, currentTokens, currentStyles);
+    }
   }
 
-  try {
-    const result = await interpretWithDeepSeek(userMessage, currentContent, currentStyles, searchContext);
-    recordPrimaryAISuccess();
-    return result;
-  } catch (deepseekErr) {
-    recordPrimaryAIFailure();
-    console.warn('[chatInterpreter] DeepSeek falló, intentando OpenRouter...', String(deepseekErr).slice(0, 150));
-    return await interpretWithOpenRouter(userMessage, currentContent, currentStyles, searchContext);
-  }
+  return interpretation;
 }

@@ -13,8 +13,8 @@ const SUGGESTIONS = [
   { emoji: '📱', text: 'Texto más grande' },
   { emoji: '🌙', text: 'Fondo oscuro' },
   { emoji: '✨', text: 'Diseño elegante' },
-  { emoji: '🌐', text: 'Busca tendencias de diseño 2026' },
-  { emoji: '🎯', text: 'Investiga colores para viajes' },
+  { emoji: '🌊', text: 'Estilo playa y relax' },
+  { emoji: '🏔️', text: 'Estilo montaña y naturaleza' },
 ];
 
 let nextId = 1;
