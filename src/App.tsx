@@ -1,5 +1,7 @@
 import { useCallback, type FC } from 'react';
+import LoadingOverlay from './components/LoadingOverlay';
 import PdfUploader from './components/PdfUploader';
+import TextInput from './components/TextInput';
 import ConversionProgress from './components/ConversionProgress';
 import MobilePreview from './components/MobilePreview';
 import ChatPanel from './components/ChatPanel';
@@ -11,10 +13,11 @@ const App: FC = () => {
   const {
     state,
     mobileContent,
-    pdfBlob,
     pdfStyles,
     isProcessing,
+    agentDataMissing,
     startConversion,
+    startTextConversion,
     applyChatChanges,
     reset,
   } = usePdfConversion();
@@ -25,8 +28,13 @@ const App: FC = () => {
     startConversion(file);
   }, [startConversion]);
 
+  const handleTextConvert = useCallback((text: string) => {
+    startTextConversion(text);
+  }, [startTextConversion]);
+
   return (
     <ErrorBoundary>
+      <LoadingOverlay />
       <div className="min-h-screen flex flex-col bg-gradient-to-b from-slate-50 to-white">
         {/* Header */}
         <header className="w-full px-6 py-4 border-b border-slate-200 bg-white/80 backdrop-blur-sm sticky top-0 z-10">
@@ -55,31 +63,68 @@ const App: FC = () => {
         <main className="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-8">
           {/* Upload Area — only show when idle or after error */}
           {state.step === 'idle' || state.step === 'error' ? (
-            <PdfUploader
-              onFileSelected={handleFileSelected}
-              disabled={isBusy}
-            />
+            <div className="space-y-6">
+              <PdfUploader
+                onFileSelected={handleFileSelected}
+                disabled={isBusy}
+              />
+
+              {/* Separador visual entre PDF y texto */}
+              <div className="flex items-center gap-4 select-none">
+                <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
+                <span className="text-sm font-medium text-slate-400 tracking-widest">
+                  — o —
+                </span>
+                <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
+              </div>
+
+              {/* Entrada alternativa: texto plano */}
+              <TextInput
+                onConvert={handleTextConvert}
+                disabled={isBusy}
+              />
+            </div>
           ) : null}
 
           {/* Progress */}
           <ConversionProgress state={state} />
 
-          {/* Mobile Preview */}
+          {/* Mobile Preview — key dinámica fuerza recreación del iframe cuando cambia contenido o estilos */}
           {mobileContent && (
-            <MobilePreview content={mobileContent} styles={pdfStyles} />
-          )}
-
-          {/* Chat de diseño (shown when done) */}
-          {state.step === 'done' && mobileContent && (
-            <ChatPanel
-              onSendInstruction={applyChatChanges}
-              isProcessing={isProcessing || isBusy}
+            <MobilePreview
+              key={JSON.stringify(mobileContent) + JSON.stringify(pdfStyles)}
+              content={mobileContent}
+              styles={pdfStyles}
             />
           )}
 
-          {/* Download (appears after regenerate) */}
-          {state.step === 'done' && pdfBlob && (
-            <PdfDownload blob={pdfBlob} fileName="documento-adaptado" />
+          {/* Chat de diseño (siempre visible mientras haya contenido) */}
+          {mobileContent && (
+            <ChatPanel
+              onSendInstruction={applyChatChanges}
+              isProcessing={isProcessing || isBusy}
+              agentDataMissing={agentDataMissing}
+            />
+          )}
+
+          {/* Download — genera el blob reactivamente desde content+styles para reflejo 1:1 con preview */}
+          {state.step === 'done' && mobileContent && (
+            <PdfDownload
+              content={mobileContent}
+              styles={pdfStyles}
+              fileName="documento-adaptado"
+              agentDataMissing={agentDataMissing}
+            />
+          )}
+
+          {/* Warning visual cuando faltan datos del agente */}
+          {agentDataMissing && (
+            <div className="text-center animate-fade-in">
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
+                <span>⚠️</span>
+                <span>Completa los datos del agente en el chat para habilitar la descarga del PDF</span>
+              </div>
+            </div>
           )}
 
           {/* Error with retry */}

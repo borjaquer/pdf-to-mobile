@@ -17,4 +17,22 @@
 - [ ] Configurar `.env` con API keys reales (Gemini, OpenRouter, Firecrawl)
 - [ ] Conectar repo con Render Dashboard
 - [ ] Test end-to-end en producción
-- [ ] Migrar a pdfmake en v2 si el texto rasterizado es inaceptable
+
+---
+
+## 2026-06-10 — Segunda Fuente de Entrada: Texto Plano
+
+### Commits
+- `(sin commit aún)` — Fase 11: Entrada alternativa de texto plano para itinerarios
+
+### Cambios realizados
+
+**Nuevos archivos:**
+- `src/components/TextInput.tsx` — Componente con dos estados: botón de activación + textarea con contador y botón convertir
+
+**Archivos modificados:**
+- `src/App.tsx` — Integración del `TextInput` con separador visual `— o —` bajo el `PdfUploader`
+- `src/hooks/usePdfConversion.ts` — Nueva función `startTextConversion(rawText)` que bypass extracción PDF y envía texto directamente al LLM
+
+### Pipeline
+- `npx tsc --noEmit` → exit 0, 0 errores

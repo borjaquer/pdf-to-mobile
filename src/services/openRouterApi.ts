@@ -27,13 +27,14 @@ const FALLBACK_MODELS = [
   'meta-llama/llama-3.3-70b-instruct:free',
 ];
 
-function getClient(): OpenAI {
+function getClient(timeoutMs = 30000): OpenAI {
   if (!API_KEY) throw new Error('VITE_OPENROUTER_API_KEY no configurada');
   return new OpenAI({
     baseURL: OPENROUTER_BASE,
     apiKey: API_KEY,
     dangerouslyAllowBrowser: true,
     maxRetries: 0, // sin auto-reintentos — la cadena de fallback ya itera
+    timeout: timeoutMs,
   });
 }
 

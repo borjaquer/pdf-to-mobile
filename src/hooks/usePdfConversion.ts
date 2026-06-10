@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
-import type { PdfConversionState, MobileContent, PdfStyles } from '../types';
+import { useLoading } from '../context/LoadingContext';
+import type { PdfConversionState, MobileContent, PdfStyles, ChatMessage } from '../types';
 import { extractPdfText } from '../services/pdfExtractor';
 import { reformatWithDeepSeek } from '../services/deepseekApi';
 import { reformatWithOpenRouter } from '../services/openRouterApi';
@@ -43,6 +44,10 @@ export function usePdfConversion() {
   const [designTokens, setDesignTokens] = useState<TokenSelection>({ ...INITIAL_TOKENS });
   const [isProcessing, setIsProcessing] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [agentDataMissing, setAgentDataMissing] = useState(false);
+
+  // LoadingContext — al nivel superior del hook (Rules of Hooks)
+  const { setLoading, setStep } = useLoading();
 
   // Refs para acceder al estado actual sin dependencias de closure (evita stale closure)
   const contentRef = useRef<MobileContent | null>(null);
@@ -69,6 +74,7 @@ export function usePdfConversion() {
   const startConversion = useCallback(async (file: File) => {
     // --- RESET ---
     setState({ step: 'extracting' });
+    setLoading(true, 'Extrayendo texto del PDF...');
     setMobileContent(null);
     setPdfBlob(null);
     setPdfStyles({ ...DEFAULT_PDF_STYLES });
@@ -87,6 +93,7 @@ export function usePdfConversion() {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error desconocido al extraer texto del PDF';
       setState({ step: 'error', error: message, errorStep: 'extract' });
+      setLoading(false);
       return;
     }
 
@@ -94,6 +101,7 @@ export function usePdfConversion() {
     // STEP 2: REFORMATEO CON IA (con rate limiting + fallback)
     // ================================================================
     setState({ step: 'reformatting' });
+    setStep('Consultando con la IA...');
 
     let reformattedContent: MobileContent;
 
@@ -120,25 +128,99 @@ export function usePdfConversion() {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al reformatear con IA. Revisa tus API keys.';
       setState({ step: 'error', error: message, errorStep: 'reformat' });
+      setLoading(false);
       return;
     }
 
     // ================================================================
     // STEP 3: GENERACIÓN PDF
     // ================================================================
+    setStep('Maquetando el itinerario final...');
     setState(prev => ({ step: 'generating', rateLimitWaitMs: prev.rateLimitWaitMs }));
 
     try {
       const blob = await generatePdf(reformattedContent, stylesRef.current);
       setPdfBlob(blob);
       setState({ step: 'done' });
+      setLoading(false);
 
     } catch (err) {
+      setLoading(false);
       console.error('[usePdfConversion] Error en generación:', err);
       const message = err instanceof Error ? err.message : 'Error al generar el PDF';
       setState({ step: 'error', error: message, errorStep: 'generate' });
     }
-  }, []);
+  }, [setLoading, setStep]);
+
+  /**
+   * Inicia la conversión desde texto plano (no PDF).
+   * Bypass completo de la extracción: el texto se envía directamente
+   * al LLM para reformateo, exactamente igual que si viniera de un PDF.
+   *
+   * El estado resultante (mobileContent, pdfBlob, pdfStyles) es
+   * indistinguible del generado por startConversion(file).
+   */
+  const startTextConversion = useCallback(async (rawText: string) => {
+    // --- RESET ---
+    setState({ step: 'reformatting' }); // saltamos 'extracting'
+    setLoading(true, 'Consultando con la IA...');
+    setMobileContent(null);
+    setPdfBlob(null);
+    setPdfStyles({ ...DEFAULT_PDF_STYLES });
+    setDesignTokens({ ...INITIAL_TOKENS });
+    contentRef.current = null;
+    stylesRef.current = { ...DEFAULT_PDF_STYLES };
+    tokensRef.current = { ...INITIAL_TOKENS };
+
+    let reformattedContent: MobileContent;
+
+    try {
+      // ── Circuit breaker: saltar DeepSeek si está en cooldown ──
+      if (isPrimaryAICircuitOpen()) {
+        console.log('[usePdfConversion] Circuit breaker abierto — usando OpenRouter directamente');
+        reformattedContent = await reformatWithOpenRouter(rawText);
+      } else {
+        try {
+          // Intentar con DeepSeek V4 primero
+          reformattedContent = await reformatWithDeepSeek(rawText);
+        } catch (dsErr) {
+          recordPrimaryAIFailure();
+          console.warn('[usePdfConversion] DeepSeek falló, intentando OpenRouter fallback...', dsErr);
+          // Fallback automático a OpenRouter
+          reformattedContent = await reformatWithOpenRouter(rawText);
+        }
+      }
+
+      contentRef.current = reformattedContent;
+      setMobileContent(reformattedContent);
+
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al reformatear con IA. Revisa tus API keys.';
+      setState({ step: 'error', error: message, errorStep: 'reformat' });
+      setLoading(false);
+      return;
+    }
+
+    // ================================================================
+    // STEP 3: GENERACIÓN PDF
+    // ================================================================
+    setStep('Maquetando el itinerario final...');
+    setState(prev => ({ step: 'generating', rateLimitWaitMs: prev.rateLimitWaitMs }));
+
+    try {
+      const blob = await generatePdf(reformattedContent, stylesRef.current);
+      setPdfBlob(blob);
+      setState({ step: 'done' });
+      setLoading(false);
+
+    } catch (err) {
+      setLoading(false);
+      console.error('[usePdfConversion] Error en generación:', err);
+      const message = err instanceof Error ? err.message : 'Error al generar el PDF';
+      setState({ step: 'error', error: message, errorStep: 'generate' });
+    }
+  }, [setLoading, setStep]);
+
 
   /**
    * Regenera el PDF usando el MobileContent y PdfStyles actuales (refs).
@@ -149,18 +231,21 @@ export function usePdfConversion() {
     const currentContent = contentRef.current;
     if (!currentContent) return;
 
+    setLoading(true, 'Maquetando el itinerario final...');
     setState(prev => ({ step: 'generating', rateLimitWaitMs: prev.rateLimitWaitMs }));
 
     try {
       const blob = await generatePdf(currentContent, stylesRef.current);
       setPdfBlob(blob);
       setState({ step: 'done' });
+      setLoading(false);
     } catch (err) {
+      setLoading(false);
       console.error('[usePdfConversion] Error al regenerar PDF:', err);
       const message = err instanceof Error ? err.message : 'Error al regenerar el PDF';
       setState({ step: 'error', error: message, errorStep: 'generate' });
     }
-  }, []);
+  }, [setLoading, setStep]);
 
   /**
    * Interpreta una instrucción de chat en lenguaje natural usando el
@@ -173,7 +258,7 @@ export function usePdfConversion() {
    * - Cambios de texto → modifica solo "content", "designTokens" intacto.
    * - Cambios visuales → modifica solo "designTokens", "content" intacto.
    */
-  const applyChatChanges = useCallback(async (userMessage: string): Promise<string> => {
+  const applyChatChanges = useCallback(async (userMessage: string, history?: ChatMessage[]): Promise<string> => {
     const currentContent = contentRef.current;
     if (!currentContent) {
       setChatError('No hay contenido que editar. Sube un PDF primero.');
@@ -182,6 +267,7 @@ export function usePdfConversion() {
 
     setIsProcessing(true);
     setChatError(null);
+    setLoading(true, 'Aplicando cambios de diseño...');
 
     try {
       const result = await interpretChatInstruction(
@@ -189,6 +275,7 @@ export function usePdfConversion() {
         currentContent,
         stylesRef.current,
         tokensRef.current,
+        history,
       );
 
       // Actualizar estado de contenido
@@ -203,18 +290,44 @@ export function usePdfConversion() {
       tokensRef.current = result.tokens;
       setDesignTokens(result.tokens);
 
+      // ═══════════════════════════════════════════════════════════════
+      // SAFETY NET — PROTOCOLO DE PERSONALIZACIÓN AUTOMÁTICA
+      // ═══════════════════════════════════════════════════════════════
+      // Si faltan agentName o agentPhone en el contenido resultante,
+      // NO se regenera el PDF. El usuario debe proporcionar estos datos
+      // antes de que el flujo pueda completarse. El mensaje del asistente
+      // (generado por el LLM) ya contendrá la solicitud si corresponde.
+      // ═══════════════════════════════════════════════════════════════
+      const agentNameMissing = !result.content.agentName?.trim();
+      const agentPhoneMissing = !result.content.agentPhone?.trim();
+
+      if (agentNameMissing || agentPhoneMissing) {
+        setAgentDataMissing(true);
+        setLoading(false);
+        // NO se setea state a 'done' — así PdfDownload NO se renderiza
+        // y el botón de descarga permanece oculto hasta que el usuario
+        // proporcione los datos.
+        return result.message;
+      }
+
+      // Si llegamos aquí, los datos del agente están completos
+      setAgentDataMissing(false);
+
+      setStep('Maquetando el itinerario final...');
       setState(prev => ({ step: 'generating', rateLimitWaitMs: prev.rateLimitWaitMs }));
 
       try {
         const blob = await generatePdf(result.content, result.styles);
         setPdfBlob(blob);
         setState({ step: 'done' });
+        setLoading(false);
         return result.message;
       } catch (pdfErr) {
         console.error('[usePdfConversion] Error al regenerar PDF tras chat:', pdfErr);
         const msg = pdfErr instanceof Error ? pdfErr.message : 'Error al regenerar el PDF';
         setState({ step: 'error', error: msg, errorStep: 'generate' });
         setChatError(msg);
+        setLoading(false);
         return `Cambios aplicados, pero falló la regeneración del PDF: ${msg}`;
       }
     } catch (err) {
@@ -222,12 +335,13 @@ export function usePdfConversion() {
       const msg = err instanceof Error ? err.message : 'Error al interpretar la instrucción';
       setChatError(msg);
       setIsProcessing(false);
+      setLoading(false);
       setState(prev => prev.step === 'generating' ? { step: 'done' } : prev);
       return `Error: ${msg}`;
     } finally {
       setIsProcessing(false);
     }
-  }, []);
+  }, [setLoading, setStep]);
 
   const reset = useCallback(() => {
     setState({ step: 'idle' });
@@ -237,10 +351,12 @@ export function usePdfConversion() {
     setDesignTokens({ ...INITIAL_TOKENS });
     setIsProcessing(false);
     setChatError(null);
+    setAgentDataMissing(false);
+    setLoading(false);
     contentRef.current = null;
     stylesRef.current = { ...DEFAULT_PDF_STYLES };
     tokensRef.current = { ...INITIAL_TOKENS };
-  }, []);
+  }, [setLoading]);
 
   return {
     state,
@@ -250,7 +366,9 @@ export function usePdfConversion() {
     designTokens,
     isProcessing,
     chatError,
+    agentDataMissing,
     startConversion,
+    startTextConversion,
     regeneratePdf,
     applyChatChanges,
     setMobileContent: updateContent,

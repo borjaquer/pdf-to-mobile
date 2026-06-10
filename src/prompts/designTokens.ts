@@ -153,6 +153,22 @@ export const PALETTES: Record<string, PaletteToken> = {
     divider: '#d8f3dc',
     price: '#40916c',
   },
+
+  corporate_pro: {
+    id: 'corporate_pro',
+    name: 'Corporate Pro',
+    description: 'ALTA GAMA: Deep teal corporativo (#072C2C de Enterprise Design) + oro cálido (#FECE14 de Professional Design). Texto rico #111827. Inspirado en Open Design systems: enterprise, professional, corporate y premium. Ideal para viajes ejecutivos, corporate premium, C-level, presentaciones de alto nivel.',
+    header: '#072C2C',
+    headerText: '#F0F4F0',
+    accent: '#FECE14',
+    background: '#FFFFFF',
+    cardBackground: '#FAF9F6',
+    text: '#111827',
+    heading: '#072C2C',
+    muted: '#6B7280',
+    divider: '#E5E7EB',
+    price: '#FECE14',
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════

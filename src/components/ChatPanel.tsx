@@ -4,6 +4,7 @@ import type { ChatMessage } from '../types';
 interface Props {
   onSendInstruction: (message: string) => Promise<string>;
   isProcessing: boolean;
+  agentDataMissing?: boolean;
 }
 
 const SUGGESTIONS = [

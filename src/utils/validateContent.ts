@@ -1,4 +1,4 @@
-import type { MobileContent, MobileDay, MobileAccommodation, MobileService } from '../types';
+import type { MobileContent, MobileDay, MobileAccommodation, MobileService, BottomBanner } from '../types';
 
 /**
  * Validación runtime post-JSON.parse() para MobileContent.
@@ -81,6 +81,27 @@ function validateService(raw: unknown, index: number): MobileService {
   };
 }
 
+// ── BottomBanner validator ────────────────────────────────────────
+
+function validateBottomBanner(raw: unknown): BottomBanner | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+
+  const b = raw as Record<string, unknown>;
+
+  const validTypes = ['price', 'warning', 'info'];
+  const type = typeof b.type === 'string' && validTypes.includes(b.type)
+    ? b.type as BottomBanner['type']
+    : undefined;
+
+  if (!type) return undefined; // sin type válido, ignoramos el banner
+
+  return {
+    title: typeof b.title === 'string' && b.title.trim() ? b.title.trim() : undefined,
+    text: typeof b.text === 'string' ? b.text.trim() : '',
+    type,
+  };
+}
+
 // ── Validator principal ─────────────────────────────────────────
 
 /**
@@ -124,6 +145,12 @@ export function validateMobileContent(raw: unknown): MobileContent {
     ? obj.pageNumber
     : undefined;
 
+  // ── Campos nuevos: bottomBanner y topNote ──
+  const bottomBanner: BottomBanner | undefined = validateBottomBanner(obj.bottomBanner);
+  const topNote: string | undefined = typeof obj.topNote === 'string' && obj.topNote.trim()
+    ? obj.topNote.trim()
+    : undefined;
+
   return {
     title: obj.title as string,
     subtitle: typeof obj.subtitle === 'string' ? obj.subtitle : undefined,
@@ -132,6 +159,8 @@ export function validateMobileContent(raw: unknown): MobileContent {
     services: services && services.length > 0 ? services : undefined,
     notes: notes && notes.length > 0 ? notes : undefined,
     pageNumber,
+    bottomBanner,
+    topNote,
   };
 }
 

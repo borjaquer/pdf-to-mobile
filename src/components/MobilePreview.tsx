@@ -1,4 +1,4 @@
-import { type FC } from 'react';
+import { type FC, useMemo } from 'react';
 import type { MobileContent, PdfStyles } from '../types';
 
 interface Props {
@@ -14,8 +14,10 @@ interface Props {
  * MobileItineraryPDF.tsx genera de forma vectorial. Ya no depende de
  * renderMobileTemplate (eliminado en la migración a @react-pdf/renderer).
  *
- * El iframe se renderiza en modo sandbox para aislamiento total del DOM
- * principal (sin scripts, sin navegación, sin popups).
+ * Estrategia anti-caché: el iframe lleva un key={cacheKey} derivado de
+ * un hash del HTML generado. Cuando content o styles cambian, el hash
+ * cambia → React destruye y recrea físicamente el iframe en el DOM,
+ * forzando al navegador a renderizar el nuevo srcDoc desde cero.
  */
 const MobilePreview: FC<Props> = ({ content, styles }) => {
   const s = styles;
@@ -101,6 +103,8 @@ body{font-family:${fontFamily};font-size:${baseSize}px;line-height:1.55;color:${
 .header{background:${headerColor};color:${headerText};text-align:center;padding:22px 16px 18px;border-radius:0 0 ${cardRadius}px ${cardRadius}px;margin-bottom:14px}
 .header h1{font-family:${headingFont};font-size:18px;font-weight:${headingWeight};color:${titleColor};text-transform:uppercase;line-height:1.15;margin-bottom:6px}
 .price-badge{display:inline-block;background:${priceColor};color:#0f172a;font-size:11px;font-weight:800;padding:4px 14px;border-radius:16px}
+.price-banner{background:${accentColor};color:#fff;text-align:center;padding:12px 16px;margin:0 12px 14px;border-radius:${cardRadius}px}
+.price-banner-text{font-size:14px;font-weight:800;letter-spacing:.5px}
 .section{margin:16px 12px 18px}
 .section-header{font-family:${headingFont};font-size:12px;font-weight:${headingWeight};color:${headingColor};text-transform:uppercase;border-bottom:2px solid ${dividerColor};padding-bottom:6px;margin-bottom:10px}
 .section-icon{font-size:13px;margin-right:4px}
@@ -130,6 +134,7 @@ body{font-family:${fontFamily};font-size:${baseSize}px;line-height:1.55;color:${
   <h1>${escapeHtml(content.title)}</h1>
   ${content.subtitle ? `<span class="price-badge">${escapeHtml(content.subtitle)}</span>` : ''}
 </div>
+${content.priceBanner ? `<div class="price-banner"><span class="price-banner-text">${escapeHtml(content.priceBanner)}</span></div>` : ''}
 ${daysHtml}
 ${servicesHtml}
 ${accoHtml}
@@ -137,6 +142,17 @@ ${notesHtml}
 ${footerHtml}
 </body>
 </html>`;
+
+  // ── Anti-cache: hash simple del HTML para forzar recreación del iframe ──
+  const cacheKey = useMemo(() => {
+    let hash = 0;
+    for (let i = 0; i < htmlString.length; i++) {
+      const chr = htmlString.charCodeAt(i);
+      hash = ((hash << 5) - hash) + chr;
+      hash |= 0; // Convert to 32bit integer
+    }
+    return 'preview-' + Math.abs(hash).toString(36);
+  }, [htmlString]);
 
   return (
     <div className="space-y-3 animate-fade-in">
@@ -154,8 +170,10 @@ ${footerHtml}
         </div>
 
         {/* Screen — iframe with inline HTML mirroring MobileItineraryPDF design */}
+        {/* key=cacheKey fuerza recreación física del iframe en el DOM cuando cambia htmlString */}
         <div className="rounded-[1.75rem] overflow-hidden bg-white h-[500px]">
           <iframe
+            key={cacheKey}
             srcDoc={htmlString}
             title="Mobile PDF Preview"
             className="w-full h-full border-0 bg-white"
