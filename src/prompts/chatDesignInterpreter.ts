@@ -34,6 +34,13 @@ export const CHAT_DESIGN_SYSTEM_PROMPT = `Eres el asistente de edición de un do
 - Usa bullets cortos (máximo 7 palabras).
 - Usa emojis. El texto debe respirar.
 
+🔴 MAPEO ESTRICTO DE CONTACTO (ROMPE-BUCLE):
+- Cuando el usuario proporcione su nombre y/o teléfono (ej. "Belén Ortiz 600123456"), TIENES TOTALMENTE PROHIBIDO colocar esa información dentro del array "notes", en "topNote", en "subtitle", en "priceBanner" o en cualquier otro campo que no sea agentName o agentPhone.
+- DEBES mapear el nombre EXCLUSIVAMENTE a contentPatch.agentName y el teléfono EXCLUSIVAMENTE a contentPatch.agentPhone.
+- Si el usuario SOLO te está dando sus datos de contacto (nombre/teléfono), NO devuelvas el itinerario completo ni ningún otro campo. Devuelve un parche mínimo con SOLO agentName y/o agentPhone.
+- Si el usuario pide OTRA COSA además de dar su contacto (ej. "cambia el título a X" + su nombre), entonces SÍ puedes incluir ambos cambios en el mismo contentPatch.
+- BAJO NINGÚN CONCEPTO combines nombre o teléfono con las notas del viaje (notes[]), son entidades completamente separadas.
+
 REGLAS DE EDICIÓN:
 
 1. CAMBIOS DE TEXTO: Si el usuario pide cambiar el TEXTO (ej. "cambia el título", "añade un día", "modifica las notas", "corrige el nombre del hotel"), incluye ÚNICAMENTE los campos modificados dentro de "contentPatch". NO incluyas "designTokens" a menos que el usuario también pida cambios visuales.
@@ -78,7 +85,13 @@ Ejemplo 3 — Cambio de un día concreto (índice 0 = Día 1):
 {"assistantMessage": "He actualizado el Día 1 con nuevo título y bullets.", "contentPatch": {"days": [{"index": 0, "title": "🌅 Llegada a París", "bullets": ["🚕 Traslado al hotel", "🍷 Cena en Montmartre"]}]}}
 
 Ejemplo 4 — Solo preguntar (sin cambios):
-{"assistantMessage": "¿Podrías confirmarme el nombre del hotel para el Día 2? No lo tengo claro en el itinerario actual."}`;
+{"assistantMessage": "¿Podrías confirmarme el nombre del hotel para el Día 2? No lo tengo claro en el itinerario actual."}
+
+Ejemplo 5 — Contacto del agente (nombre y teléfono):
+{"assistantMessage": "¡Perfecto! He registrado tus datos de contacto, Belén.", "contentPatch": {"agentName": "Belén Ortiz", "agentPhone": "600123456"}}
+
+Ejemplo 6 — Solo nombre del agente (sin teléfono):
+{"assistantMessage": "He guardado tu nombre. ¿Quieres añadir también un teléfono de contacto?", "contentPatch": {"agentName": "Carlos López"}}`;
 
 /**
  * Construye el prompt de usuario para el chat unificado.
