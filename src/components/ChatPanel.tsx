@@ -8,9 +8,6 @@ interface Props {
 }
 
 const SUGGESTIONS = [
-  { emoji: '🎨', text: 'Cambiar colores' },
-  { emoji: '🔤', text: 'Cambiar fuente' },
-  { emoji: '📝', text: 'Editar título' },
   { emoji: '📱', text: 'Texto más grande' },
   { emoji: '🌙', text: 'Fondo oscuro' },
   { emoji: '✨', text: 'Diseño elegante' },

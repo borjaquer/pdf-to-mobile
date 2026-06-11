@@ -64,6 +64,7 @@ Fallback chain: DeepSeek V3 → OpenRouter multi-modelo (openrouter/free router 
 - **`interpretChatInstruction()`** y funciones internas aceptan `searchContext?: string`
 - **Env var:** `VITE_FIRECRAWL_API_KEY` (Firecrawl free tier: 500 créditos/mes)
 - **Sugerencias en ChatPanel:** chips "🌐 Busca tendencias de diseño 2026" y "🎯 Investiga colores para viajes"
+- **Sugerencias eliminadas:** "Cambiar colores", "Cambiar fuente", "Editar título" — retiradas del array `SUGGESTIONS`
 - **Mensaje al usuario:** si se usó búsqueda, añade "🔍 Se consultó la web para inspirar el diseño."
 
 ## Build Status
