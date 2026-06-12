@@ -166,7 +166,7 @@ const MobileItineraryPDF: React.FC<Props> = ({ content, styles: _styles }) => {
         )}
 
         {/* ═══ SERVICIOS INCLUIDOS ═══ */}
-        {(content.serviciosIncluidos?.length ?? 0) > 0 && (
+        {content.serviciosIncluidos && content.serviciosIncluidos.length > 0 && (
           /* EL CONTENEDOR PADRE DEBE PODER ROMPERSE (SIN wrap={false}) */
           <View style={s.section}>
             {/* BLOQUE INDIVISIBLE: Título + underline + primer bullet (índice 0) */}
@@ -191,7 +191,7 @@ const MobileItineraryPDF: React.FC<Props> = ({ content, styles: _styles }) => {
         )}
 
         {/* ═══ ALOJAMIENTOS ═══ */}
-        {(content.accommodations?.length ?? 0) > 0 && (
+        {content.accommodations && content.accommodations.length > 0 && (
           <View style={s.section}>
             {/* Bloque indivisible: Título + Primera Fila */}
             <View wrap={false}>
