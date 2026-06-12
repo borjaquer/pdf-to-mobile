@@ -61,7 +61,19 @@ TEXTO DEL PDF A REFORMATEAR:
 ${pdfText}
 ---
 
-Responde ÚNICAMENTE con el JSON, sin markdown ni texto adicional.`;
+Responde ÚNICAMENTE con el JSON, sin markdown ni texto adicional.
+
+Recuerda el schema esperado:
+{
+  "title": "string (MAYÚSCULAS)",
+  "tagline": "string (opcional)",
+  "tarifaDesde": "string (opcional, ej: '1.332 €')",
+  "days": [{ "n": 1, "titulo": "string", "resumen": "string" }],
+  "serviciosIncluidos": ["string"],
+  "accommodations": [{ "ciudad": "string", "hoteles": ["string"] }],
+  "opcionComidasPlus": "string (opcional)",
+  "pageNumber": number
+}`;
 }
 
 /**

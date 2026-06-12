@@ -10,86 +10,86 @@ interface Props {
 /**
  * Vista previa del documento en un mockup de teléfono.
  *
- * v2: Renderiza HTML inline que refleja el mismo diseño visual que
- * MobileItineraryPDF.tsx genera de forma vectorial. Ya no depende de
- * renderMobileTemplate (eliminado en la migración a @react-pdf/renderer).
+ * v3: Renderiza HTML inline que refleja el diseño del dossier objetivo
+ * (crema/navy/dorado, días sin bullets, hoteles por ciudad, comidas plus).
  *
  * Estrategia anti-caché: el iframe lleva un key={cacheKey} derivado de
- * un hash del HTML generado. Cuando content o styles cambian, el hash
- * cambia → React destruye y recrea físicamente el iframe en el DOM,
- * forzando al navegador a renderizar el nuevo srcDoc desde cero.
+ * un hash del HTML generado.
  */
 const MobilePreview: FC<Props> = ({ content, styles }) => {
   const s = styles;
 
-  const headerColor = s?.headerGradient ?? '#1e293b';
-  const headerText = s?.headerTextColor ?? '#f1f5f9';
-  const titleColor = s?.titleColor ?? '#ffffff';
-  const priceColor = s?.priceColor ?? '#f59e0b';
-  const headingColor = s?.headingColor ?? '#0f172a';
-  const textColor = s?.textColor ?? '#334155';
-  const accentColor = s?.accentColor ?? '#3b82f6';
-  const cardBg = s?.cardBackground ?? '#f8fafc';
-  const dividerColor = s?.dividerColor ?? '#e2e8f0';
-  const mutedColor = s?.mutedColor ?? '#94a3b8';
-  const bulletColor = s?.bulletColor ?? accentColor;
-  const cardRadius = s?.cardRadius ?? 8;
-  const fontFamily = s?.fontFamily ?? 'Arial, Helvetica, sans-serif';
-  const headingFont = s?.headingFontFamily ?? fontFamily;
-  const headingWeight = s?.headingFontWeight ?? '700';
-  const baseSize = s?.fontSize ?? 14;
+  const headerColor = s?.headerGradient ?? '#0F2C3D';
+  const headerText = s?.headerTextColor ?? '#FFFFFF';
+  const titleColor = s?.titleColor ?? '#FFFFFF';
+  const headingColor = s?.headingColor ?? '#0F2C3D';
+  const textColor = s?.textColor ?? '#4A5568';
+  const accentColor = s?.accentColor ?? '#C5A880';
+  const cardBg = s?.cardBackground ?? '#F4EFEA';
+  const bgColor = s?.backgroundColor ?? '#FDFBF9';
+  const mutedColor = s?.mutedColor ?? '#A0AEC0';
+  const fontFamily = s?.fontFamily ?? 'Arimo, Arial, sans-serif';
+  const headingFont = s?.headingFontFamily ?? 'Tinos, Georgia, serif';
 
   const escapeHtml = (str: string) =>
     str.replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>');
 
+  // ── Days (sin bullets, sin emoji, sin cards) ──
   const daysHtml = (content.days ?? []).length
-    ? `<div class="section"><div class="section-header"><span class="section-icon">🌍</span><span>ITINERARIO</span></div><div class="timeline">${(content.days ?? []).map((d, i) => `
-      <div class="day-card">
-        <div class="day-marker"><span class="day-marker-badge">${i + 1}</span></div>
-        <div class="day-body">
-          <div class="day-title">${d.emoji ? escapeHtml(d.emoji) + ' ' : ''}${escapeHtml(d.title)}</div>
-          ${d.summary ? `<div class="day-summary">${escapeHtml(d.summary)}</div>` : ''}
-          ${d.bullets.map(b => `<div class="bullet-row"><span class="bullet-dot"></span><span class="bullet-text">${escapeHtml(b)}</span></div>`).join('')}
+    ? `<div class="section">
+        <div class="section-header">
+          <span class="section-emoji">🗺️</span>
+          <span>ITINERARIO DE VIAJE</span>
         </div>
-      </div>`).join('')}</div></div>`
+        <div class="section-underline"></div>
+        ${(content.days ?? []).map(d => `
+        <div class="day-block">
+          <div class="day-label">Día ${d.n ?? 0}</div>
+          <div class="day-title">${escapeHtml(d.titulo)}</div>
+          <div class="day-summary">${escapeHtml(d.resumen)}</div>
+        </div>`).join('')}
+        </div>`
     : '';
 
-  const serviceLabels: Record<string, string> = {
-    included: '✓ INCLUIDO',
-    not_included: '✗ NO INCLUIDO',
-    optional: '◉ OPCIONAL',
-  };
-
-  const serviceColors: Record<string, { bg: string; border: string; label: string }> = {
-    included: { bg: '#f0fdf4', border: '#bbf7d0', label: '#16a34a' },
-    not_included: { bg: '#fef2f2', border: '#fecaca', label: '#dc2626' },
-    optional: { bg: '#eff6ff', border: '#bfdbfe', label: '#2563eb' },
-  };
-
-  const servicesHtml = (content.services ?? []).length
-    ? `<div class="section"><div class="section-header"><span class="section-icon">🛠️</span><span>SERVICIOS</span></div><div class="services-grid">${(content.services ?? []).map(sv => {
-      const colors = serviceColors[sv.category];
-      return `<div class="service-block" style="background:${colors.bg};border-color:${colors.border}"><div class="service-label" style="color:${colors.label}">${serviceLabels[sv.category]}</div>${sv.items.map(i => `<div class="service-item">${escapeHtml(i)}</div>`).join('')}</div>`;
-    }).join('')}</div></div>`
+  // ── Servicios (bullets planos) ──
+  const serviciosHtml = (content.serviciosIncluidos ?? []).length
+    ? `<div class="section">
+        <div class="section-header">
+          <span class="section-emoji">✅</span>
+          <span>SERVICIOS INCLUIDOS</span>
+        </div>
+        <div class="section-underline"></div>
+        ${(content.serviciosIncluidos ?? []).map(sv => `
+        <div class="bullet-row"><span class="bullet-dot">•</span><span class="bullet-text">${escapeHtml(sv)}</span></div>`).join('')}
+        </div>`
     : '';
 
+  // ── Alojamientos (2-columnas) ──
   const accoHtml = (content.accommodations ?? []).length
-    ? `<div class="section"><div class="section-header"><span class="section-icon">🏨</span><span>ALOJAMIENTOS</span></div><div class="acco-list">${(content.accommodations ?? []).map(a => `
-      <div class="acco-card">
-        <span class="acco-pin">📍</span>
-        <div class="acco-info">
-          <div class="acco-name">${escapeHtml(a.name)}</div>
-          <div class="acco-meta">${[a.location, a.nights, a.board].filter(Boolean).join(' · ')}</div>
+    ? `<div class="section">
+        <div class="section-header">
+          <span class="section-emoji">🏨</span>
+          <span>ALOJAMIENTOS PREVISTOS</span>
         </div>
-      </div>`).join('')}</div></div>`
+        <div class="section-underline"></div>
+        ${(content.accommodations ?? []).map(a => `
+        <div class="acco-row">
+          <span class="acco-city">${escapeHtml(a.ciudad)}</span>
+          <span class="acco-hoteles">${escapeHtml(a.hoteles.join(' / '))}</span>
+        </div>`).join('')}
+        </div>`
     : '';
 
-  const notesHtml = (content.notes ?? []).length
-    ? `<div class="section"><div class="section-header"><span class="section-icon">📋</span><span>NOTAS</span></div><div class="notes-list">${(content.notes ?? []).map(n => `<div class="note-item">${escapeHtml(n)}</div>`).join('')}</div></div>`
-    : '';
-
-  const footerHtml = content.pageNumber != null
-    ? `<div class="footer">Página ${content.pageNumber}</div>`
+  // ── Comidas Plus ──
+  const comidasHtml = content.opcionComidasPlus
+    ? `<div class="section">
+        <div class="section-header">
+          <span class="section-emoji">🍽️</span>
+          <span>OPCIÓN COMIDAS PLUS</span>
+        </div>
+        <div class="section-underline"></div>
+        <div class="comidas-card">${escapeHtml(content.opcionComidasPlus)}</div>
+        </div>`
     : '';
 
   const htmlString = `<!DOCTYPE html>
@@ -99,57 +99,53 @@ const MobilePreview: FC<Props> = ({ content, styles }) => {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:${fontFamily};font-size:${baseSize}px;line-height:1.55;color:${textColor};background:#fff;width:340px;-webkit-font-smoothing:antialiased}
-.header{background:${headerColor};color:${headerText};text-align:center;padding:22px 16px 18px;border-radius:0 0 ${cardRadius}px ${cardRadius}px;margin-bottom:14px}
-.header h1{font-family:${headingFont};font-size:18px;font-weight:${headingWeight};color:${titleColor};text-transform:uppercase;line-height:1.15;margin-bottom:6px}
-.price-badge{display:inline-block;background:${priceColor};color:#0f172a;font-size:11px;font-weight:800;padding:4px 14px;border-radius:16px}
-.price-banner{background:${accentColor};color:#fff;text-align:center;padding:12px 16px;margin:0 12px 14px;border-radius:${cardRadius}px}
-.price-banner-text{font-size:14px;font-weight:800;letter-spacing:.5px}
-.section{margin:16px 12px 18px}
-.section-header{font-family:${headingFont};font-size:12px;font-weight:${headingWeight};color:${headingColor};text-transform:uppercase;border-bottom:2px solid ${dividerColor};padding-bottom:6px;margin-bottom:10px}
-.section-icon{font-size:13px;margin-right:4px}
-.day-card{display:flex;align-items:flex-start;background:${cardBg};border-radius:${cardRadius}px;border:1px solid ${dividerColor};padding:10px;margin-bottom:8px;font-size:12px}
-.day-marker{width:34px;flex-shrink:0}
-.day-marker-badge{display:inline-block;width:24px;height:24px;border-radius:50%;background:${accentColor};color:#fff;font-size:11px;font-weight:800;line-height:24px;text-align:center}
-.day-body{flex:1}
-.day-title{font-family:${headingFont};font-size:13px;font-weight:700;color:${headingColor};margin-bottom:2px}
-.day-summary{font-size:10px;color:${mutedColor};margin-bottom:4px}
-.bullet-row{display:flex;align-items:flex-start;margin-bottom:4px}
-.bullet-dot{width:5px;height:5px;border-radius:50%;background:${bulletColor};flex-shrink:0;margin-top:4px;margin-right:8px}
-.bullet-text{font-size:10px;color:${textColor};line-height:1.4}
-.service-block{border-radius:${cardRadius}px;border:1px solid;padding:8px 12px;margin-bottom:8px}
-.service-label{font-size:10px;font-weight:700;text-transform:uppercase;margin-bottom:4px}
-.service-item{font-size:10px;color:${textColor};line-height:1.4;padding:1px 0}
-.acco-card{display:flex;align-items:flex-start;background:${cardBg};border-radius:${cardRadius}px;border:1px solid ${dividerColor};padding:10px;margin-bottom:6px}
-.acco-pin{font-size:14px;margin-right:6px;flex-shrink:0}
-.acco-info{flex:1}
-.acco-name{font-size:12px;font-weight:700;color:${headingColor};margin-bottom:2px}
-.acco-meta{font-size:9px;color:${mutedColor}}
-.note-item{font-size:10px;color:${textColor};background:${cardBg};border-left:3px solid ${accentColor};border-radius:0 ${cardRadius}px ${cardRadius}px 0;padding:6px 10px;margin-bottom:6px;font-style:italic;line-height:1.45}
-.footer{text-align:center;font-size:9px;color:${mutedColor};padding:16px 0 8px;text-transform:uppercase;opacity:.5}
+body{font-family:${fontFamily};font-size:11px;line-height:1.5;color:${textColor};background:${bgColor};width:298px;-webkit-font-smoothing:antialiased}
+.hero{background:${headerColor};color:${headerText};text-align:center;padding:24px 18px 16px;margin-bottom:16px}
+.hero h1{font-family:${headingFont};font-size:14px;color:${titleColor};text-transform:uppercase;line-height:1.2;margin-bottom:6px}
+.hero-rule{width:50px;height:2px;background:${accentColor};margin:8px auto}
+.hero-tagline{font-family:${headingFont};font-style:italic;font-size:9px;color:${accentColor}}
+.tarifa-badge{display:inline-block;border:1px solid ${accentColor};padding:3px 12px;margin-top:8px;border-radius:2px}
+.tarifa-badge span{font-size:8px;color:#fff;text-transform:uppercase}
+.section{margin:14px 18px 8px}
+.section-header{display:flex;align-items:center;font-family:${headingFont};font-size:11px;font-weight:700;color:${headingColor};text-transform:uppercase}
+.section-emoji{font-size:11px;margin-right:4px}
+.section-underline{height:1px;background:${accentColor};margin:4px 0 8px}
+.day-block{margin-bottom:12px}
+.day-label{font-family:${headingFont};font-style:italic;font-weight:700;font-size:10px;color:${accentColor};margin-bottom:2px}
+.day-title{font-family:${headingFont};font-weight:700;font-size:10px;color:${headingColor};margin-bottom:3px}
+.day-summary{font-size:9px;line-height:1.45;text-align:justify}
+.bullet-row{display:flex;align-items:flex-start;margin-bottom:3px}
+.bullet-dot{width:14px;font-size:9px;text-align:center;flex-shrink:0}
+.bullet-text{flex:1;font-size:9px;line-height:1.45;text-align:justify}
+.acco-row{display:flex;border-bottom:0.5px solid ${accentColor};padding-bottom:3px;margin-bottom:3px}
+.acco-city{font-family:${headingFont};font-weight:700;font-size:9px;color:${headingColor};width:72px}
+.acco-hoteles{font-size:8px;flex:1}
+.comidas-card{background:${cardBg};border-left:2px solid ${headingColor};padding:8px 10px;font-size:9px;line-height:1.5;text-align:justify}
+.footer{text-align:right;padding:12px 18px 8px;font-family:${headingFont};font-style:italic;font-size:7px;color:${mutedColor}}
 </style>
 </head>
 <body>
-<div class="header">
+<div class="hero">
   <h1>${escapeHtml(content.title)}</h1>
-  ${content.subtitle ? `<span class="price-badge">${escapeHtml(content.subtitle)}</span>` : ''}
+  <div class="hero-rule"></div>
+  ${content.tagline ? `<div class="hero-tagline">${escapeHtml(content.tagline)}</div>` : ''}
+  ${content.tarifaDesde ? `<div class="tarifa-badge"><span>TARIFA DESDE ${escapeHtml(content.tarifaDesde.replace(/Desde\s*/i, ''))}</span></div>` : ''}
 </div>
-${content.priceBanner ? `<div class="price-banner"><span class="price-banner-text">${escapeHtml(content.priceBanner)}</span></div>` : ''}
 ${daysHtml}
-${servicesHtml}
+${serviciosHtml}
 ${accoHtml}
-${notesHtml}
-${footerHtml}
+${comidasHtml}
+<div class="footer">1</div>
 </body>
 </html>`;
 
-  // ── Anti-cache: hash simple del HTML para forzar recreación del iframe ──
+  // ── Anti-cache: hash simple del HTML ──
   const cacheKey = useMemo(() => {
     let hash = 0;
     for (let i = 0; i < htmlString.length; i++) {
       const chr = htmlString.charCodeAt(i);
       hash = ((hash << 5) - hash) + chr;
-      hash |= 0; // Convert to 32bit integer
+      hash |= 0;
     }
     return 'preview-' + Math.abs(hash).toString(36);
   }, [htmlString]);
@@ -169,8 +165,7 @@ ${footerHtml}
           </div>
         </div>
 
-        {/* Screen — iframe with inline HTML mirroring MobileItineraryPDF design */}
-        {/* key=cacheKey fuerza recreación física del iframe en el DOM cuando cambia htmlString */}
+        {/* Screen — iframe with inline HTML */}
         <div className="rounded-[1.75rem] overflow-hidden bg-white h-[500px]">
           <iframe
             key={cacheKey}

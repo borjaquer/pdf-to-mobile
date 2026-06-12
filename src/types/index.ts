@@ -18,68 +18,68 @@ export interface ConversionStep {
   progress?: number; // 0-100
 }
 
+/**
+ * v3 — Dossier móvil (espejo del PDF objetivo).
+ *
+ * Cambios frente a v2:
+ *  - MobileDay ya no usa emoji ni bullets por día.
+ *  - MobileAccommodation ahora agrupa hoteles por ciudad.
+ *  - MobileService desaparece; en su lugar serviciosIncluidos (string[]).
+ *  - MobileContent gana tagline, tarifaDesde, opcionComidasPlus.
+ *  - Se conservan campos de chat (agentName, agentPhone, priceBanner, topNote, bottomBanner)
+ *    para mantener compatibilidad con el intérprete de edición.
+ */
+
 export interface MobileDay {
-  emoji: string;
-  title: string;
-  summary: string;
-  bullets: string[];
+  /** Número del día (1-9). El LLM lo rellena explícitamente para poder ordenar. */
+  n: number;
+  /** Título corto editorial (3-6 palabras, puede incluir ciudades entre paréntesis). */
+  titulo: string;
+  /** Resumen de 1-3 frases telegráficas con hitos accionables. SIN bullets, SIN emojis, SIN "Desayuno". */
+  resumen: string;
 }
 
 export interface MobileAccommodation {
-  name: string;
-  nights: string;
-  board: string;
-  location: string;
-}
-
-export interface MobileService {
-  category: 'included' | 'not_included' | 'optional';
-  items: string[];
+  /** Ciudad (ordenada según aparición en el itinerario). */
+  ciudad: string;
+  /** Hoteles de esa ciudad (máx 3 marcas), unidos con " / ". SIN "o similares". */
+  hoteles: string[];
 }
 
 export interface BottomBanner {
-  /** Título opcional del banner (ej. "PRECIO TOTAL") */
   title?: string;
-  /** Texto principal del banner (ej. "1500€") */
   text: string;
-  /** Tipo visual: price (recuadro destacado), warning (alerta), info (informativo) */
   type: 'price' | 'warning' | 'info';
 }
 
 export interface MobileContent {
+  /** Título principal del viaje (MAYÚSCULAS en el PDF). */
   title: string;
-  subtitle?: string;
+  /** Tagline bajo el título: "Dossier Exclusivo de Itinerario • 9 Días y 8 Noches". */
+  tagline?: string;
+  /** Tarifa "Desde X €". El LLM extrae la cifra del bruto; se renderiza como badge. */
+  tarifaDesde?: string;
+  /** Días del itinerario. Sin emoji, sin bullets. */
   days: MobileDay[];
+  /** Alojamientos agrupados por ciudad. */
   accommodations?: MobileAccommodation[];
-  services?: MobileService[];
+  /** Servicios incluidos como array de strings (≈9 bullets reescritos). */
+  serviciosIncluidos?: string[];
+  /** Párrafo único de marketing para la opción "Comidas Plus". */
+  opcionComidasPlus?: string;
+  /** Notas importantes (documentación, visados, etc.). */
   notes?: string[];
+  /** Número de página del PDF original (para metadata, no se renderiza). */
   pageNumber?: number;
-  /**
-   * Banner opcional que se renderiza al final del PDF.
-   * El LLM lo rellena cuando el usuario pide añadir un precio,
-   * una advertencia o una nota final que no encaja en la estructura normal.
-   */
+  /** Banner opcional al final del PDF (compatible con chat de edición). */
   bottomBanner?: BottomBanner;
-  /**
-   * Nota opcional que se renderiza al inicio del PDF (tras el header).
-   * Texto libre que el LLM puede usar para añadir información contextual.
-   */
+  /** Nota opcional al inicio (compatible con chat de edición). */
   topNote?: string;
-  /**
-   * Recuadro de precio simple (string) que se renderiza al final del PDF.
-   * Aparece cuando el usuario pide añadir un precio destacado.
-   * Más simple que bottomBanner — solo texto plano con fondo de acento.
-   */
+  /** Recuadro de precio simple (compatible con chat de edición). */
   priceBanner?: string;
-  /**
-   * Nombre del agente de viajes para el pie de página.
-   * El LLM lo rellena cuando el usuario proporciona su nombre.
-   */
+  /** Nombre del agente (compatible con chat de edición). */
   agentName?: string;
-  /**
-   * Teléfono del agente de viajes para el pie de página.
-   * El LLM lo rellena cuando el usuario proporciona su número.
-   */
+  /** Teléfono del agente (compatible con chat de edición). */
   agentPhone?: string;
 }
 
@@ -155,12 +155,10 @@ export interface GeminiResponse {
 export interface ContentPatchDay {
   /** Índice 0-based del día a modificar (0 = Día 1, 1 = Día 2, etc.) */
   index: number;
-  /** Nuevo título del día (opcional) */
-  title?: string;
-  /** Nuevo resumen del día (opcional) */
-  summary?: string;
-  /** Nuevos bullets del día (opcional — reemplaza el array completo) */
-  bullets?: string[];
+  /** Nuevo título del día (opcional) — v3: sin emoji, MAYÚSCULAS */
+  titulo?: string;
+  /** Nuevo resumen del día (opcional) — v3: párrafo descriptivo sin bullets */
+  resumen?: string;
 }
 
 export interface ChatResponse {
@@ -174,7 +172,6 @@ export interface ChatResponse {
   /** Parche delta con los campos de texto modificados. */
   contentPatch?: {
     title?: string;
-    subtitle?: string;
     priceBanner?: string;
     topNote?: string;
     /**
@@ -184,37 +181,38 @@ export interface ChatResponse {
      */
     days?: ContentPatchDay[];
     /**
-     * Edición profunda de alojamientos (hoteles) por índice.
+     * Edición profunda de alojamientos (hoteles agrupados por ciudad) — v3.
      * Cada entrada debe incluir el index (0-based dentro del array accommodations)
      * y SOLO los campos a modificar.
      */
     accommodations?: Array<{
       /** Índice 0-based del alojamiento a modificar. */
       index: number;
-      /** Nuevo nombre del hotel (opcional). */
-      name?: string;
-      /** Nuevas noches (opcional). */
-      nights?: string;
-      /** Nueva régimen (opcional). */
-      board?: string;
-      /** Nueva ubicación (opcional). */
-      location?: string;
+      /** Nueva ciudad (opcional). */
+      ciudad?: string;
+      /** Nuevos hoteles (opcional — reemplaza el array completo). */
+      hoteles?: string[];
     }>;
     /**
-     * Edición profunda de servicios por índice de categoría.
-     * index: 0 = included, 1 = not_included, 2 = optional.
-     * Si se incluye items, se sobrescribe la lista completa de esa categoría.
+     * Sobrescribe completamente el array de servicios incluidos — v3.
      */
-    services?: Array<{
-      /** 0 = included, 1 = not_included, 2 = optional */
-      index: number;
-      /** Items que sobrescriben la lista completa de esa categoría (opcional). */
-      items?: string[];
-    }>;
+    serviciosIncluidos?: string[];
     /**
      * Sobrescribe completamente el array de notas (notes).
      */
     notes?: string[];
+    /**
+     * Frase gancho bajo el título — v3.
+     */
+    tagline?: string;
+    /**
+     * Texto de tarifa desde — v3 (ej: "1.425€").
+     */
+    tarifaDesde?: string;
+    /**
+     * Párrafo describiendo el upgrade de comidas — v3.
+     */
+    opcionComidasPlus?: string;
     /**
      * Nombre del agente de viajes. El LLM lo captura cuando el usuario
      * proporciona su nombre completo en el chat.

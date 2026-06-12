@@ -86,10 +86,13 @@ ${pdfText}
 Responde con este formato JSON:
 {
   "title": "string",
+  "tagline": "string (frase gancho bajo el título)",
   "subtitle": "string (opcional)",
-  "days": [{ "emoji": "string", "title": "string", "summary": "string", "bullets": ["string"] }],
-  "accommodations": [{ "name": "string", "nights": "string", "board": "string", "location": "string" }],
-  "services": [{ "category": "included|not_included|optional", "items": ["string"] }],
+  "tarifaDesde": "string (ej: '1.425€')",
+  "days": [{ "n": number, "titulo": "string", "resumen": "string" }],
+  "serviciosIncluidos": ["string"],
+  "accommodations": [{ "ciudad": "string", "hoteles": ["string"] }],
+  "opcionComidasPlus": "string (párrafo describiendo el upgrade de comidas)",
   "notes": ["string"],
   "pageNumber": number
 }`,

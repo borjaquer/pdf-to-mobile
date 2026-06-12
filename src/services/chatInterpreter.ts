@@ -167,12 +167,23 @@ function parsePatchResponse(
       mergedContent.topNote = patch.topNote;
     }
 
-    if (patch.subtitle !== undefined) {
-      mergedContent.subtitle = patch.subtitle;
+    // v3: tagline (reemplaza subtitle)
+    if (patch.tagline !== undefined) {
+      mergedContent.tagline = patch.tagline;
+    }
+
+    // v3: tarifaDesde
+    if (patch.tarifaDesde !== undefined) {
+      mergedContent.tarifaDesde = patch.tarifaDesde;
+    }
+
+    // v3: opcionComidasPlus
+    if (patch.opcionComidasPlus !== undefined) {
+      mergedContent.opcionComidasPlus = patch.opcionComidasPlus;
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // DEEP MERGE DE DÍAS POR ÍNDICE
+    // DEEP MERGE DE DÍAS POR ÍNDICE — v3 (titulo/resumen, sin bullets)
     // ═══════════════════════════════════════════════════════════════
     if (patch.days && Array.isArray(patch.days) && patch.days.length > 0) {
       const mergedDays = currentContent.days ? [...currentContent.days] : [];
@@ -188,9 +199,8 @@ function parsePatchResponse(
         }
 
         const dayChanges: Record<string, unknown> = {};
-        if (patchDay.title !== undefined) dayChanges.title = patchDay.title;
-        if (patchDay.summary !== undefined) dayChanges.summary = patchDay.summary;
-        if (patchDay.bullets !== undefined) dayChanges.bullets = patchDay.bullets;
+        if (patchDay.titulo !== undefined) dayChanges.titulo = patchDay.titulo;
+        if (patchDay.resumen !== undefined) dayChanges.resumen = patchDay.resumen;
 
         if (Object.keys(dayChanges).length === 0) continue;
 
@@ -204,7 +214,7 @@ function parsePatchResponse(
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // DEEP MERGE DE ALOJAMIENTOS POR ÍNDICE
+    // DEEP MERGE DE ALOJAMIENTOS POR ÍNDICE — v3 (ciudad/hoteles[])
     // ═══════════════════════════════════════════════════════════════
     if (patch.accommodations && Array.isArray(patch.accommodations) && patch.accommodations.length > 0) {
       const mergedAccoms = currentContent.accommodations ? [...currentContent.accommodations] : [];
@@ -220,10 +230,8 @@ function parsePatchResponse(
         }
 
         const accomChanges: Record<string, unknown> = {};
-        if (patchAccom.name !== undefined) accomChanges.name = patchAccom.name;
-        if (patchAccom.nights !== undefined) accomChanges.nights = patchAccom.nights;
-        if (patchAccom.board !== undefined) accomChanges.board = patchAccom.board;
-        if (patchAccom.location !== undefined) accomChanges.location = patchAccom.location;
+        if (patchAccom.ciudad !== undefined) accomChanges.ciudad = patchAccom.ciudad;
+        if (patchAccom.hoteles !== undefined) accomChanges.hoteles = patchAccom.hoteles;
 
         if (Object.keys(accomChanges).length === 0) continue;
 
@@ -237,33 +245,10 @@ function parsePatchResponse(
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // DEEP MERGE DE SERVICIOS POR ÍNDICE (0=included, 1=not_included, 2=optional)
+    // SOBRESCRITURA DIRECTA DE serviciosIncluidos — v3
     // ═══════════════════════════════════════════════════════════════
-    if (patch.services && Array.isArray(patch.services) && patch.services.length > 0) {
-      const mergedServices = currentContent.services ? [...currentContent.services] : [];
-
-      for (const patchSvc of patch.services) {
-        const idx = patchSvc.index;
-        if (typeof idx !== 'number' || isNaN(idx) || idx < 0 || idx >= mergedServices.length) {
-          console.warn(
-            `[chatInterpreter] DeepMerge: índice de servicio inválido (${idx}). ` +
-            `Array actual tiene ${mergedServices.length} categorías de servicio. Saltando...`,
-          );
-          continue;
-        }
-
-        const svcChanges: Record<string, unknown> = {};
-        if (patchSvc.items !== undefined) svcChanges.items = patchSvc.items;
-
-        if (Object.keys(svcChanges).length === 0) continue;
-
-        mergedServices[idx] = {
-          ...mergedServices[idx],
-          ...svcChanges,
-        };
-      }
-
-      mergedContent.services = mergedServices;
+    if (patch.serviciosIncluidos !== undefined && Array.isArray(patch.serviciosIncluidos)) {
+      mergedContent.serviciosIncluidos = [...patch.serviciosIncluidos];
     }
 
     // ═══════════════════════════════════════════════════════════════

@@ -29,10 +29,12 @@ export const CHAT_DESIGN_SYSTEM_PROMPT = `Eres el asistente de edición de un do
 - El campo "content" NO EXISTE en tu respuesta. Está PROHIBIDO usar la clave "content" en el JSON raíz.
 - El campo "days" NO EXISTE en la raíz de tu respuesta. Los días solo pueden ir dentro de contentPatch.days y siempre como array de parches con índice.
 
-🔴 REGLA DE FORMATO VISUAL (LA REGLA DE ORO):
+🔴 REGLA DE FORMATO VISUAL (LA REGLA DE ORO — v3 Dossier):
 - Cuando modifiques o generes texto para el itinerario, prohibido usar párrafos largos o mazacotes de texto.
-- Usa bullets cortos (máximo 7 palabras).
-- Usa emojis. El texto debe respirar.
+- Los días NO llevan bullets. Cada día tiene un \`titulo\` en MAYÚSCULAS (sin emojis, sin nombre del día de la semana) y un \`resumen\` en párrafo fluido y acogedor, estrictamente conciso (máximo 2-3 oraciones cortas). Prohibido el estilo telegráfico tipo "Vuelo. Traslado. Tiempo libre."; redacta como un guía turístico profesional, cercano, usando "vosotros" o "tú".
+- NO uses emojis en los títulos de los días. El diseño es limpio, editorial, tipo dossier de agencia.
+- Los servicios se listan como \`serviciosIncluidos\` (array de strings), no como categorías con índice.
+- Los alojamientos se agrupan por ciudad: cada entrada tiene \`ciudad\` y \`hoteles[]\`.
 
 🔴 MAPEO ESTRICTO DE CONTACTO (ROMPE-BUCLE):
 - Cuando el usuario proporcione su nombre y/o teléfono (ej. "Belén Ortiz 600123456"), TIENES TOTALMENTE PROHIBIDO colocar esa información dentro del array "notes", en "topNote", en "subtitle", en "priceBanner" o en cualquier otro campo que no sea agentName o agentPhone.
@@ -81,8 +83,8 @@ Ejemplo 1 — Cambio de título:
 Ejemplo 2 — Cambio visual:
 {"assistantMessage": "He aplicado el estilo elegante con paleta Navy & Gold y tipografía Classic Editorial.", "designTokens": {"paletteId": "navy_gold", "typographyId": "classic_editorial"}}
 
-Ejemplo 3 — Cambio de un día concreto (índice 0 = Día 1):
-{"assistantMessage": "He actualizado el Día 1 con nuevo título y bullets.", "contentPatch": {"days": [{"index": 0, "title": "🌅 Llegada a París", "bullets": ["🚕 Traslado al hotel", "🍷 Cena en Montmartre"]}]}}
+Ejemplo 3 — Cambio de un día concreto (índice 0 = Día 1, formato v3):
+{"assistantMessage": "He actualizado el Día 1 con nuevo título y resumen.", "contentPatch": {"days": [{"index": 0, "titulo": "LLEGADA A PARÍS", "resumen": "¡Bienvenidos a París! Tras aterrizar, os trasladaremos al hotel en el centro. Tendréis la tarde libre para una primera exploración antes de la cena de bienvenida."}]}}
 
 Ejemplo 4 — Solo preguntar (sin cambios):
 {"assistantMessage": "¿Podrías confirmarme el nombre del hotel para el Día 2? No lo tengo claro en el itinerario actual."}

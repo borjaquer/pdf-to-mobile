@@ -8,49 +8,51 @@ import {
   Font,
 } from '@react-pdf/renderer';
 import type { MobileContent, PdfStyles } from '../types';
-import { DEFAULT_PDF_STYLES } from '../utils/defaultPdfStyles';
+
+// ═══════════════════════════════════════════════════════════════
+// FONT REGISTRATION — Tinos (≈ Liberation Serif) + Arimo (≈ Nimbus Sans)
+// TTF estáticos self-hosted en /public/fonts.
+// ═══════════════════════════════════════════════════════════════
+Font.register({
+  family: 'Tinos',
+  fonts: [
+    { src: '/fonts/Tinos-Regular.ttf' },
+    { src: '/fonts/Tinos-Bold.ttf', fontWeight: 'bold' },
+    { src: '/fonts/Tinos-Italic.ttf', fontStyle: 'italic' },
+    { src: '/fonts/Tinos-BoldItalic.ttf', fontStyle: 'italic', fontWeight: 'bold' },
+  ],
+});
+
+Font.register({
+  family: 'Arimo',
+  fonts: [
+    { src: '/fonts/Arimo-Regular.ttf' },
+    { src: '/fonts/Arimo-Bold.ttf', fontWeight: 'bold' },
+    { src: '/fonts/Arimo-Italic.ttf', fontStyle: 'italic' },
+    { src: '/fonts/Arimo-BoldItalic.ttf', fontStyle: 'italic', fontWeight: 'bold' },
+  ],
+});
 
 // ═══════════════════════════════════════════════════════════════
 // HYPHENATION: Prohibir que @react-pdf/renderer corte palabras
-// automaticamente (ej. "ALEMA-NIA" o "Es-trasburgo").
 // ═══════════════════════════════════════════════════════════════
 Font.registerHyphenationCallback((word) => [word]);
 
 // ═══════════════════════════════════════════════════════════════
-// FONT MAPPING: CSS font-family strings → @react-pdf/renderer fonts
-//
-// @react-pdf/renderer built-in fonts:
-//   Helvetica / Helvetica-Bold / Helvetica-Oblique / Helvetica-BoldOblique
-//   Times-Roman / Times-Bold / Times-Italic / Times-BoldItalic
-//   Courier / Courier-Bold / Courier-Oblique / Courier-BoldOblique
+// CONSTANTS — dimensiones exactas del dossier objetivo
 // ═══════════════════════════════════════════════════════════════
+const PAGE_WIDTH = 298;   // pt
+const PAGE_HEIGHT = 694;  // pt
+const MARGIN_H = 34;      // pt (12 mm)
+const USABLE_WIDTH = PAGE_WIDTH - 2 * MARGIN_H; // 230 pt
 
-// ─── FIX 1: Text Sanitizer ───────────────────────────────────
-// Elimina emojis, HTML residual y Markdown que corrompen
-// el renderizado de @react-pdf/renderer (caracteres basura como <DUia).
-// Se aplica a TODO texto dinamico antes de pasarlo a <Text>.
-// ──────────────────────────────────────────────────────────────
-function sanitizeText(str: string): string {
-  return str
-    .replace(/<[^>]*>/g, '')            // strip residual HTML tags
-    .replace(/\*/g, '')                 // strip Markdown asterisks
-    .replace(/[^\x00-\x7FáéíóúÁÉÍÓÚñÑüÜ¿¡\n\r\t ]/g, ''); // keep ASCII + Spanish chars
-}
-
-function mapToPdfFont(cssFamily: string): string {
-  const lower = cssFamily.toLowerCase();
-  if (lower.includes('times') || lower.includes('georgia') || lower.includes('serif')) {
-    return 'Times-Roman';
-  }
-  // Default: Helvetica (covers Arial, Trebuchet MS, sans-serif)
-  return 'Helvetica';
-}
-
-function mapToPdfFontWeight(weight: string): number | 'bold' {
-  const parsed = parseInt(weight, 10);
-  if (!isNaN(parsed)) return parsed;
-  return 'bold';
-}
+// Colores directos (no dependen de PdfStyles para los elementos fijos del dossier)
+const CREAM = '#FDFBF9';
+const NAVY = '#0F2C3D';
+const GOLD = '#C5A880';
+const BEIGE = '#F4EFEA';
+const SLATE = '#4A5568';
+const MUTED = '#A0AEC0';
 
 // ═══════════════════════════════════════════════════════════════
 // PROPS
@@ -62,255 +64,183 @@ interface Props {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SERVICE COLOR CONSTANTS — semanticos, independientes de palette
+// SANITIZER
 // ═══════════════════════════════════════════════════════════════
 
-const SERVICE_COLORS = {
-  included:  { bg: '#f0fdf4', border: '#bbf7d0', label: '#16a34a', icon: '\u2713' },
-  not_included: { bg: '#fef2f2', border: '#fecaca', label: '#dc2626', icon: '\u2717' },
-  optional:  { bg: '#eff6ff', border: '#bfdbfe', label: '#2563eb', icon: '\u25C9' },
-} as const;
-
-const SERVICE_LABELS: Record<string, string> = {
-  included: 'INCLUIDO',
-  not_included: 'NO INCLUIDO',
-  optional: 'OPCIONAL',
-};
-
-// ═══════════════════════════════════════════════════════════════
-// SUB-COMPONENTS
-// ═══════════════════════════════════════════════════════════════
-
-interface HeaderProps {
-  content: MobileContent;
-  s: ReturnType<typeof createStyles>;
+function sanitize(str: string): string {
+  return str.replace(/<[^>]*>/g, '').replace(/\*/g, '');
 }
 
-const Header: React.FC<HeaderProps> = ({ content, s }) => (
-  <View style={s.header} wrap={false}>
-    <Text style={s.title}>{sanitizeText(content.title)}</Text>
-    {content.subtitle ? (
-      <View style={s.priceBadge} wrap={false}>
-        <Text style={s.priceBadgeText}>{sanitizeText(content.subtitle)}</Text>
-      </View>
-    ) : null}
-  </View>
-);
+// ═══════════════════════════════════════════════════════════════
+// HELPERS — Split de texto para wrap condicional
+// ═══════════════════════════════════════════════════════════════
 
-interface SectionHeaderProps {
-  icon: string;
-  label: string;
-  s: ReturnType<typeof createStyles>;
+/**
+ * Divide un string en ~200 caracteres en un límite de palabra (espacio).
+ * Esto produce ~2-3 líneas de texto a 11.5pt en columna de 230pt,
+ * suficiente para que el título no quede huérfano pero lo bastante
+ * compacto para caber en el espacio restante de la página actual.
+ */
+const CHUNK_CHARS = 200;
+
+function splitAtWordBoundary(text: string, maxChars: number): [string, string] {
+  if (text.length <= maxChars) return [text, ''];
+
+  // Buscar el último espacio dentro del límite
+  let splitIdx = text.lastIndexOf(' ', maxChars);
+
+  // Si no hay espacio en el rango, cortar forzosamente en maxChars
+  if (splitIdx === -1 || splitIdx < maxChars * 0.5) {
+    splitIdx = maxChars;
+  }
+
+  return [text.substring(0, splitIdx).trimEnd(), text.substring(splitIdx).trimStart()];
 }
 
-const SectionHeader: React.FC<SectionHeaderProps> = ({ icon, label, s }) => (
-  <View style={s.sectionHeader} wrap={false}>
-    <Text style={s.sectionIcon}>{sanitizeText(icon)}</Text>
-    <Text style={s.sectionHeaderText}>{sanitizeText(label)}</Text>
-  </View>
-);
-
 // ═══════════════════════════════════════════════════════════════
-// MAIN COMPONENT: MobileItineraryPDF
+// MAIN COMPONENT: MobileItineraryPDF v3 — Dossier Móvil
+// Patrón "Cabecera Absoluta + Espaciador":
+//   - Página tiene paddingTop: 40 (margen en págs 2,3,…)
+//   - heroBand es position:absolute con top:0, left:0, right:0
+//     → full-bleed anclado al borde físico del papel
+//   - heroSpacer invisible empuja el contenido de la pág 1
 // ═══════════════════════════════════════════════════════════════
 
-const MobileItineraryPDF: React.FC<Props> = ({ content, styles }) => {
-  const merged: PdfStyles = styles ?? DEFAULT_PDF_STYLES;
-  const s = createStyles(merged);
+const MobileItineraryPDF: React.FC<Props> = ({ content, styles: _styles }) => {
+  void _styles; // PdfStyles prop reservado para futura personalización; el dossier usa estilos fijos
 
   return (
     <Document>
-      <Page size={[390, 844]} style={s.page}>
-        {/* ── Header ── */}
-        <Header content={content} s={s} />
+      <Page size={[PAGE_WIDTH, PAGE_HEIGHT]} style={s.page}>
+        {/* ═══ 1. HERO BAND — absoluta, full-bleed, solo visible en pág 1 ═══ */}
+        <View style={s.heroBand}>
+          <Text style={s.headerTitle}>{sanitize(content.title)}</Text>
+          <View style={s.headerDivider} />
+          {content.tagline ? (
+            <Text style={s.headerSubtitle}>{sanitize(content.tagline)}</Text>
+          ) : null}
+          {content.tarifaDesde ? (
+            <View style={s.priceBadge}>
+              <Text style={s.priceText}>
+                {sanitize(`TARIFA DESDE ${content.tarifaDesde.replace(/Desde\s*/i, '')}`)}
+              </Text>
+            </View>
+          ) : null}
+        </View>
 
-        {/* ── Itinerario (Timeline Day Cards) ── */}
+        {/* ═══ 2. ESPACIADOR INVISIBLE — empuja el contenido bajo la cabecera en pág 1 ═══ */}
+        <View style={s.heroSpacer} />
+
+        {/* ═══ 3. CONTENIDO NORMAL ═══ */}
+
+        {/* ═══ ITINERARIO ═══ */}
         {(content.days?.length ?? 0) > 0 && (
           <View style={s.section}>
-            {/* Título + primer día NUNCA se separan (previene título huérfano) */}
-            <View wrap={false}>
-              <SectionHeader icon={'\uD83C\uDF0D'} label="ITINERARIO" s={s} />
-              <View style={s.dayCard} wrap={false}>
-                <View style={s.dayMarker}>
-                  <Text style={s.dayMarkerText}>1</Text>
-                </View>
-                <View style={s.dayBody}>
-                  <Text style={s.dayTitle}>
-                    {sanitizeText(content.days[0].title)}
-                  </Text>
-                  {content.days[0].summary ? (
-                    <Text style={s.daySummary}>{sanitizeText(content.days[0].summary)}</Text>
-                  ) : null}
-                  {content.days[0].bullets.map((bullet, j) => (
-                    <View key={j} style={s.bulletRow}>
-                      <View style={s.bulletDot} />
-                      <Text style={s.bulletText}>{sanitizeText(bullet)}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
+            {/* Section header */}
+            <View style={s.sectionHeader}>
+              <Text style={s.sectionTitle}>ITINERARIO DE VIAJE</Text>
             </View>
-            {/* Del índice 1 en adelante, saltan de página libremente */}
-            {content.days.slice(1).map((day, i) => (
-              <View key={i + 1} style={s.dayCard} wrap={false}>
-                <View style={s.dayMarker}>
-                  <Text style={s.dayMarkerText}>{i + 2}</Text>
-                </View>
-                <View style={s.dayBody}>
-                  <Text style={s.dayTitle}>
-                    {sanitizeText(day.title)}
-                  </Text>
-                  {day.summary ? (
-                    <Text style={s.daySummary}>{sanitizeText(day.summary)}</Text>
-                  ) : null}
-                  {day.bullets.map((bullet, j) => (
-                    <View key={j} style={s.bulletRow}>
-                      <View style={s.bulletDot} />
-                      <Text style={s.bulletText}>{sanitizeText(bullet)}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
+            <View style={s.sectionUnderline} />
 
-        {/* ── Servicios ── */}
-        {(content.services?.length ?? 0) > 0 && (
-          <View style={s.section}>
-            {/* Título + primer servicio NUNCA se separan (previene título huérfano) */}
-            <View wrap={false}>
-              <SectionHeader icon={'\uD83D\uDEE0\uFE0F'} label="SERVICIOS" s={s} />
-              {(() => {
-                const sv = content.services![0];
-                const colors = SERVICE_COLORS[sv.category];
-                return (
-                  <View
-                    style={{
-                      backgroundColor: colors.bg,
-                      borderColor: colors.border,
-                      borderWidth: 1,
-                      borderRadius: merged.cardRadius ?? 8,
-                      paddingVertical: 8,
-                      paddingHorizontal: 12,
-                      marginBottom: 8,
-                    }}
-                    wrap={false}
-                  >
-                    <Text style={{ ...s.serviceLabel, color: colors.label }}>
-                      {sanitizeText(colors.icon)} {sanitizeText(SERVICE_LABELS[sv.category])}
-                    </Text>
-                    {sv.items.map((item, j) => (
-                      <Text key={j} style={s.serviceItem}>{sanitizeText(item)}</Text>
-                    ))}
-                  </View>
-                );
-              })()}
-            </View>
-            {/* Del índice 1 en adelante, saltan de página libremente */}
-            {content.services!.slice(1).map((sv, i) => {
-              const colors = SERVICE_COLORS[sv.category];
+            {content.days.map((day, index) => {
+              // Split en ~200 chars (≈2-3 líneas) en límite de palabra —
+              // suficiente para anclar el título sin forzar salto de página
+              const resumen = sanitize(day.resumen);
+              const [firstChunk, restChunk] = splitAtWordBoundary(resumen, CHUNK_CHARS);
+
               return (
-                <View
-                  key={i + 1}
-                  style={{
-                    backgroundColor: colors.bg,
-                    borderColor: colors.border,
-                    borderWidth: 1,
-                    borderRadius: merged.cardRadius ?? 8,
-                    paddingVertical: 8,
-                    paddingHorizontal: 12,
-                    marginBottom: 8,
-                  }}
-                  wrap={false}
-                >
-                  <Text style={{ ...s.serviceLabel, color: colors.label }}>
-                    {sanitizeText(colors.icon)} {sanitizeText(SERVICE_LABELS[sv.category])}
-                  </Text>
-                  {sv.items.map((item, j) => (
-                    <Text key={j} style={s.serviceItem}>{sanitizeText(item)}</Text>
-                  ))}
+                <View key={index} style={s.dayContainer}>
+                  {/* Bloque indivisible: Label + Título + primeras ~2-3 líneas */}
+                  <View wrap={false}>
+                    <Text style={s.dayLabel}>Día {day.n || index + 1}</Text>
+                    <Text style={s.dayTitle}>{sanitize(day.titulo)}</Text>
+                    <Text style={[s.dayText, { marginBottom: 0 }]}>{firstChunk}</Text>
+                  </View>
+
+                  {/* El resto del párrafo fluye libremente a la página siguiente si es necesario */}
+                  {restChunk ? <Text style={s.dayText}>{restChunk}</Text> : null}
                 </View>
               );
             })}
           </View>
         )}
 
-        {/* ── Alojamientos ── */}
+        {/* ═══ SERVICIOS INCLUIDOS ═══ */}
+        {(content.serviciosIncluidos?.length ?? 0) > 0 && (
+          /* EL CONTENEDOR PADRE DEBE PODER ROMPERSE (SIN wrap={false}) */
+          <View style={s.section}>
+            {/* BLOQUE INDIVISIBLE: Título + underline + primer bullet (índice 0) */}
+            <View wrap={false}>
+              <View style={s.sectionHeader}>
+                <Text style={s.sectionTitle}>SERVICIOS INCLUIDOS</Text>
+              </View>
+              <View style={s.sectionUnderline} />
+              <View style={s.bulletRow}>
+                <Text style={s.bulletDot}>{'\u2022'}</Text>
+                <Text style={s.bulletText}>{sanitize(content.serviciosIncluidos[0])}</Text>
+              </View>
+            </View>
+            {/* EL RESTO DE LA LISTA: Fluye libremente rellenando las páginas siguientes */}
+            {content.serviciosIncluidos.slice(1).map((servicio, index) => (
+              <View key={index + 1} style={s.bulletRow} wrap={false}>
+                <Text style={s.bulletDot}>{'\u2022'}</Text>
+                <Text style={s.bulletText}>{sanitize(servicio)}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* ═══ ALOJAMIENTOS ═══ */}
         {(content.accommodations?.length ?? 0) > 0 && (
           <View style={s.section}>
-            {/* Título + primer alojamiento NUNCA se separan (previene título huérfano) */}
+            {/* Bloque indivisible: Título + Primera Fila */}
             <View wrap={false}>
-              <SectionHeader icon={'\uD83C\uDFE8'} label="ALOJAMIENTOS" s={s} />
-              {(() => {
-                const acco = content.accommodations![0];
-                return (
-                  <View style={s.accoCard} wrap={false}>
-                    <Text style={s.accoPin}>{sanitizeText('\uD83D\uDCCD')}</Text>
-                    <View style={s.accoInfo}>
-                      <Text style={s.accoName}>{sanitizeText(acco.name)}</Text>
-                      <Text style={s.accoMeta}>
-                        {sanitizeText(
-                          [acco.location, acco.nights, acco.board]
-                            .filter(Boolean)
-                            .join(' \u00B7 ')
-                        )}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })()}
+              <View style={s.sectionHeader}>
+                <Text style={s.sectionTitle}>ALOJAMIENTOS PREVISTOS</Text>
+              </View>
+              <View style={s.sectionUnderline} />
+
+              <View style={s.accoRow}>
+                <Text style={s.accoCity}>{sanitize(content.accommodations[0].ciudad)}</Text>
+                <Text style={s.accoHoteles}>
+                  {sanitize(content.accommodations[0].hoteles.join(' / '))}
+                </Text>
+              </View>
             </View>
-            {/* Del índice 1 en adelante, saltan de página libremente */}
-            {content.accommodations!.slice(1).map((acco, i) => (
-              <View key={i + 1} style={s.accoCard} wrap={false}>
-                <Text style={s.accoPin}>{sanitizeText('\uD83D\uDCCD')}</Text>
-                <View style={s.accoInfo}>
-                  <Text style={s.accoName}>{sanitizeText(acco.name)}</Text>
-                  <Text style={s.accoMeta}>
-                    {sanitizeText(
-                      [acco.location, acco.nights, acco.board]
-                        .filter(Boolean)
-                        .join(' \u00B7 ')
-                    )}
-                  </Text>
-                </View>
+
+            {/* Resto de filas (pueden saltar de página) */}
+            {content.accommodations.slice(1).map((item, index) => (
+              <View key={index + 1} style={s.accoRow} wrap={false}>
+                <Text style={s.accoCity}>{sanitize(item.ciudad)}</Text>
+                <Text style={s.accoHoteles}>
+                  {sanitize(item.hoteles.join(' / '))}
+                </Text>
               </View>
             ))}
           </View>
         )}
 
-        {/* ── Notas ── */}
-        {(content.notes?.length ?? 0) > 0 && (
+        {/* ═══ OPCIÓN COMIDAS PLUS ═══ */}
+        {content.opcionComidasPlus ? (
           <View style={s.section}>
-            {/* Título + primera nota NUNCA se separan (previene título huérfano) */}
-            <View wrap={false}>
-              <SectionHeader icon={'\uD83D\uDCCB'} label="NOTAS" s={s} />
-              <View style={s.noteItem} wrap={false}>
-                <Text style={s.noteText}>{sanitizeText(content.notes![0])}</Text>
-              </View>
+            <View style={s.sectionHeader}>
+              <Text style={s.sectionTitle}>OPCIÓN COMIDAS PLUS</Text>
             </View>
-            {/* Del índice 1 en adelante, saltan de página libremente */}
-            {content.notes!.slice(1).map((note, i) => (
-              <View key={i + 1} style={s.noteItem} wrap={false}>
-                <Text style={s.noteText}>{sanitizeText(note)}</Text>
-              </View>
-            ))}
-          </View>
-        )}
+            <View style={s.sectionUnderline} />
 
-        {/* ── Footer fijo dinámico ── */}
+            <View style={s.comidasCard} wrap={false}>
+              <Text style={s.comidasText}>{sanitize(content.opcionComidasPlus)}</Text>
+            </View>
+          </View>
+        ) : null}
+
+        {/* ═══ FOOTER PREMIUM (fixed, todas las páginas) ═══ */}
         <View fixed style={s.footer}>
           <View style={s.footerContact}>
-            <Text style={s.footerName}>{sanitizeText(content.agentName ?? '')}</Text>
-            <Text style={s.footerPhone}>{sanitizeText(content.agentPhone ?? '')}</Text>
+            {content.agentName && <Text style={s.footerName}>{content.agentName}</Text>}
+            {content.agentPhone && <Text style={s.footerPhone}>{content.agentPhone}</Text>}
           </View>
-          <Text
-            style={s.footerPage}
-            render={({ pageNumber, totalPages }) =>
-              `Página ${pageNumber} de ${totalPages}`
-            }
-          />
+          <Text style={s.footerPage} render={({ pageNumber }) => `${pageNumber}`} />
         </View>
       </Page>
     </Document>
@@ -318,255 +248,233 @@ const MobileItineraryPDF: React.FC<Props> = ({ content, styles }) => {
 };
 
 // ═══════════════════════════════════════════════════════════════
-// STYLES (generados dinamicamente a partir de PdfStyles)
-//
-// Flexbox nativo de @react-pdf/renderer — sin colapso de margenes,
-// sin limitaciones de html2canvas. Alineacion perfecta.
+// STYLES — dossier móvil (298×694 pt, crema/navy/dorado)
+// Patrón "Cabecera Absoluta + Espaciador"
 // ═══════════════════════════════════════════════════════════════
 
-function createStyles(styles: PdfStyles) {
-  const cardRadius = styles.cardRadius ?? 8;
+const s = StyleSheet.create({
+  // ── Page ──────────────────────────────────────────────
+  // paddingTop: 40 → respiro superior para págs 2,3,…
+  // paddingHorizontal: 34 → márgenes laterales para TODO el contenido
+  // paddingBottom: 80 → protección del footer fixed
+  page: {
+    backgroundColor: CREAM,
+    fontFamily: 'Arimo',
+    fontSize: 9,
+    color: SLATE,
+    paddingTop: 40,
+    paddingBottom: 80,
+    paddingLeft: 34,
+    paddingRight: 34,
+  },
 
-  const headingFont = mapToPdfFont(styles.headingFontFamily ?? styles.fontFamily);
-  const headingWeight = mapToPdfFontWeight(styles.headingFontWeight ?? '700');
-  const bodyFont = mapToPdfFont(styles.fontFamily);
+  // ── Hero Band — absoluta, full-bleed (ignora padding de página) ──
+  // top:0, left:0, right:0 → full-bleed anclado al borde físico del papel
+  // paddingTop:50 → respiro elegante desde el techo para el título
+  heroBand: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: NAVY,
+    paddingTop: 50,
+    paddingBottom: 30,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+  headerTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontFamily: 'Tinos',
+    textAlign: 'center',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  headerDivider: {
+    width: 40,
+    height: 2,
+    backgroundColor: GOLD,
+    marginBottom: 8,
+    alignSelf: 'center',
+  },
+  headerSubtitle: {
+    color: '#C5A880',
+    fontSize: 12,
+    fontFamily: 'Tinos',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  priceBadge: {
+    borderWidth: 1,
+    borderColor: GOLD,
+    borderRadius: 3,
+    paddingVertical: 5,
+    paddingHorizontal: 18,
+    marginTop: 10,
+  },
+  priceText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontFamily: 'Arimo',
+    fontWeight: 'bold',
+  },
 
-  return StyleSheet.create({
-    // ── Page ──────────────────────────────────────────────
-    page: {
-      backgroundColor: styles.backgroundColor,
-      fontFamily: bodyFont,
-      fontSize: styles.fontSize ?? 18,
-      color: styles.textColor,
-      padding: 24,
-      paddingBottom: 40,
-    },
+  // ── Hero Spacer — invisible, empuja el contenido bajo la cabecera en pág 1 ──
+  // En págs 2+ la heroBand no se pinta (position:absolute en pág 1),
+  // pero el spacer sigue ocupando espacio. Con paddingTop:40 en page,
+  // el contenido de págs 2+ empieza a 40pt del borde.
+  heroSpacer: {
+    height: 185,
+  },
 
-    // ── Header ────────────────────────────────────────────
-    header: {
-      backgroundColor: styles.headerGradient ?? styles.accentColor,
-      paddingVertical: 24,
-      paddingHorizontal: 20,
-      alignItems: 'center',
-      marginBottom: 16,
-      borderBottomLeftRadius: cardRadius,
-      borderBottomRightRadius: cardRadius,
-    },
-    title: {
-      fontFamily: headingFont,
-      fontSize: 30,
-      fontWeight: headingWeight as any,
-      color: styles.titleColor,
-      textTransform: 'uppercase',
-      textAlign: 'center',
-    },
-    priceBadge: {
-      backgroundColor: styles.priceColor ?? '#f59e0b',
-      borderRadius: 20,
-      paddingVertical: 4,
-      paddingHorizontal: 16,
-      marginTop: 8,
-      alignSelf: 'center',
-    },
-    priceBadgeText: {
-      fontSize: 14,
-      fontWeight: 'bold',
-      color: '#0f172a',
-      textAlign: 'center',
-      fontFamily: 'Helvetica',
-    },
+  // ── Sections ──────────────────────────────────────────
+  section: {
+    marginTop: 16,
+    marginBottom: 6,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sectionTitle: {
+    color: '#0F2C3D',
+    fontSize: 14,
+    fontFamily: 'Tinos',
+    textTransform: 'uppercase',
+    marginTop: 15,
+    marginBottom: 4,
+  },
+  sectionUnderline: {
+    width: USABLE_WIDTH,
+    height: 1,
+    backgroundColor: GOLD,
+    marginTop: 4,
+    marginBottom: 15,
+  },
 
-    // ── Sections ─────────────────────────────────────────
-    section: {
-      marginHorizontal: 16,
-      marginBottom: 18,
-    },
-    sectionHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      borderBottomWidth: 2,
-      borderBottomColor: styles.dividerColor ?? '#e2e8f0',
-      paddingBottom: 6,
-      marginBottom: 12,
-    },
-    sectionIcon: {
-      fontSize: 18,
-      marginRight: 6,
-    },
-    sectionHeaderText: {
-      fontFamily: headingFont,
-      fontSize: 22,
-      fontWeight: headingWeight as any,
-      color: styles.headingColor,
-      textTransform: 'uppercase',
-    },
+  // ── Day Blocks (sin card, layout vertical) ────────────
+  dayContainer: {
+    flexDirection: 'column',
+    marginBottom: 14,
+  },
+  dayLabel: {
+    fontSize: 11,
+    color: '#C5A880',
+    fontFamily: 'Tinos',
+    fontWeight: 'bold',
+    fontStyle: 'italic',
+    marginBottom: 4,
+  },
+  dayTitle: {
+    fontSize: 13,
+    color: '#0F2C3D',
+    fontFamily: 'Tinos',
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  dayText: {
+    fontSize: 11.5,
+    color: '#4A5568',
+    fontFamily: 'Arimo',
+    lineHeight: 1.4,
+    textAlign: 'left',
+    marginBottom: 15,
+  },
 
-    // ── Day Cards (Timeline) ──────────────────────────────
-    // FIX 3: flexDirection:'row' + alignItems:'flex-start' + width:'100%' + marginBottom:12
-    dayCard: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      width: '100%',
-      marginBottom: 12,
-      backgroundColor: styles.cardBackground ?? '#f8fafc',
-      borderRadius: cardRadius,
-      borderWidth: 1,
-      borderColor: styles.dividerColor ?? '#e2e8f0',
-      padding: 10,
-      fontFamily: bodyFont,
-    },
-    // FIX 2: Geometria estricta del circulo — 24x24, borderRadius 12, flexShrink 0
-    dayMarker: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
-      backgroundColor: styles.accentColor,
-      justifyContent: 'center',
-      alignItems: 'center',
-      flexShrink: 0,
-    },
-    // FIX 2: Texto sin margenes, paddings ni line-height conflictivo
-    dayMarkerText: {
-      color: '#ffffff',
-      fontSize: 16,
-      fontWeight: 'bold',
-      textAlign: 'center',
-      fontFamily: 'Helvetica',
-    },
-    // FIX 3: Contenedor de texto adyacente con flex:1 + marginLeft:8
-    dayBody: {
-      flex: 1,
-      marginLeft: 8,
-    },
-    dayTitle: {
-      fontFamily: headingFont,
-      fontSize: 24,
-      fontWeight: 'bold',
-      color: styles.headingColor,
-      marginBottom: 2,
-    },
-    daySummary: {
-      fontSize: 18,
-      color: styles.mutedColor ?? styles.textColor,
-      marginBottom: 4,
-      lineHeight: 1.5,
-    },
-    bulletRow: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      marginBottom: 4,
-    },
-    bulletDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: styles.bulletColor ?? styles.accentColor,
-      marginTop: 3,
-      marginRight: 8,
-      marginLeft: 4,
-    },
-    bulletText: {
-      flex: 1,
-      fontSize: 18,
-      color: styles.textColor,
-      lineHeight: 1.5,
-    },
+  // ── Services bullets ───────────────────────────────────
+  bulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 6,
+  },
+  bulletDot: {
+    width: 16,
+    fontSize: 15,
+    color: SLATE,
+    textAlign: 'center',
+    marginRight: 0,
+  },
+  bulletText: {
+    flex: 1,
+    fontSize: 11.5,
+    color: '#4A5568',
+    fontFamily: 'Arimo',
+    lineHeight: 1.4,
+    textAlign: 'left',
+  },
 
-    // ── Services ──────────────────────────────────────────
-    serviceLabel: {
-      fontSize: 18,
-      fontWeight: 'bold',
-      textTransform: 'uppercase',
-      marginBottom: 4,
-      fontFamily: 'Helvetica',
-    },
-    serviceItem: {
-      fontSize: 18,
-      color: styles.textColor,
-      lineHeight: 1.5,
-      marginBottom: 1,
-    },
+  // ── Accommodations table ───────────────────────────────
+  accoRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 0.5,
+    borderBottomColor: GOLD,
+    paddingBottom: 6,
+    marginBottom: 6,
+  },
+  accoCity: {
+    fontSize: 11,
+    fontFamily: 'Tinos',
+    fontWeight: 'bold',
+    color: '#0F2C3D',
+    width: 85,
+  },
+  accoHoteles: {
+    fontSize: 10.5,
+    fontFamily: 'Arimo',
+    color: '#4A5568',
+    lineHeight: 1.3,
+    flex: 1,
+  },
 
-    // ── Accommodations ────────────────────────────────────
-    accoCard: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      backgroundColor: styles.cardBackground ?? '#f8fafc',
-      borderRadius: cardRadius,
-      borderWidth: 1,
-      borderColor: styles.dividerColor ?? '#e2e8f0',
-      padding: 10,
-      marginBottom: 6,
-      fontFamily: bodyFont,
-    },
-    accoPin: {
-      fontSize: 20,
-      marginRight: 8,
-      marginTop: 1,
-    },
-    accoInfo: {
-      flex: 1,
-    },
-    accoName: {
-      fontFamily: headingFont,
-      fontSize: 20,
-      fontWeight: 'bold',
-      color: styles.headingColor,
-      marginBottom: 2,
-    },
-    accoMeta: {
-      fontSize: 16,
-      color: styles.mutedColor ?? styles.textColor,
-    },
+  // ── Comidas Plus card ──────────────────────────────────
+  comidasCard: {
+    backgroundColor: BEIGE,
+    borderLeftWidth: 2.3,
+    borderLeftColor: NAVY,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    width: USABLE_WIDTH,
+  },
+  comidasText: {
+    fontSize: 11.5,
+    color: '#4A5568',
+    fontFamily: 'Arimo',
+    lineHeight: 1.4,
+    textAlign: 'justify',
+  },
 
-    // ── Notes ─────────────────────────────────────────────
-    noteItem: {
-      backgroundColor: styles.cardBackground ?? '#f8fafc',
-      borderLeftWidth: 3,
-      borderLeftColor: styles.accentColor,
-      borderTopRightRadius: cardRadius,
-      borderBottomRightRadius: cardRadius,
-      padding: 8,
-      marginBottom: 6,
-    },
-    noteText: {
-      fontSize: 18,
-      color: styles.textColor,
-      fontStyle: 'italic',
-      fontFamily: bodyFont,
-      lineHeight: 1.5,
-    },
-
-    // ── Footer (fijo, compacto, horizontal) ───────────────
-    footer: {
-      position: 'absolute',
-      bottom: 25,
-      left: 40,
-      right: 40,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'flex-end',
-      borderTop: '1 solid #E5E7EB',
-      paddingTop: 8,
-    },
-    footerContact: {
-      flexDirection: 'column',
-    },
-    footerName: {
-      fontSize: 14,
-      fontFamily: 'Helvetica-Bold',
-      color: '#374151',
-      marginBottom: 2,
-    },
-    footerPhone: {
-      fontSize: 13,
-      color: '#6B7280',
-    },
-    footerPage: {
-      fontSize: 13,
-      color: '#9CA3AF',
-    },
-  });
-}
+  // ── Footer premium (fixed, nombre agente + teléfono + página) ──
+  footer: {
+    position: 'absolute',
+    bottom: 25,
+    left: 34,
+    right: 34,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    borderTop: '1 solid #C5A880',
+    paddingTop: 8,
+  },
+  footerContact: {
+    flexDirection: 'column',
+  },
+  footerName: {
+    fontFamily: 'Tinos',
+    fontSize: 12,
+    color: NAVY,
+  },
+  footerPhone: {
+    fontFamily: 'Arimo',
+    fontSize: 10,
+    color: SLATE,
+  },
+  footerPage: {
+    fontFamily: 'Tinos',
+    fontSize: 10,
+    color: MUTED,
+    fontStyle: 'italic',
+  },
+});
 
 export default MobileItineraryPDF;

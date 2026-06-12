@@ -1,13 +1,12 @@
-import type { MobileContent, MobileDay, MobileAccommodation, MobileService, BottomBanner } from '../types';
+import type { MobileContent, MobileDay, MobileAccommodation, BottomBanner } from '../types';
 
 /**
- * Validación runtime post-JSON.parse() para MobileContent.
+ * Validación runtime post-JSON.parse() para MobileContent v3 (dossier móvil).
  *
  * La IA (DeepSeek/OpenRouter) puede devolver JSON malformado, incompleto o con
  * campos faltantes. El cast `as MobileContent` de TypeScript no protege en runtime.
  * Esta función actúa como safety net para garantizar que el template de PDF nunca
- * reciba datos corruptos que provoquen crashes como:
- *   TypeError: Cannot read properties of undefined (reading 'length')
+ * reciba datos corruptos.
  *
  * Estrategia: campos obligatorios lanzan Error, campos opcionales reciben defaults.
  */
@@ -21,20 +20,14 @@ function validateDay(raw: unknown, index: number): MobileDay {
 
   const d = raw as Record<string, unknown>;
 
-  if (typeof d.emoji !== 'string' || !d.emoji.trim()) {
-    throw new Error(`Día ${index + 1}: falta "emoji" o no es string`);
-  }
-  if (typeof d.title !== 'string' || !d.title.trim()) {
-    throw new Error(`Día ${index + 1}: falta "title" o no es string`);
+  if (typeof d.titulo !== 'string' || !d.titulo.trim()) {
+    throw new Error(`Día ${index + 1}: falta "titulo" o no es string`);
   }
 
   return {
-    emoji: d.emoji,
-    title: d.title,
-    summary: typeof d.summary === 'string' ? d.summary : '',
-    bullets: Array.isArray(d.bullets)
-      ? d.bullets.filter((b: unknown) => typeof b === 'string')
-      : [],
+    n: typeof d.n === 'number' ? d.n : index + 1,
+    titulo: d.titulo,
+    resumen: typeof d.resumen === 'string' ? d.resumen : '',
   };
 }
 
@@ -45,43 +38,17 @@ function validateAccommodation(raw: unknown, index: number): MobileAccommodation
 
   const a = raw as Record<string, unknown>;
 
-  if (typeof a.name !== 'string' || !a.name.trim()) {
-    throw new Error(`Alojamiento ${index + 1}: falta "name" o no es string`);
+  if (typeof a.ciudad !== 'string' || !a.ciudad.trim()) {
+    throw new Error(`Alojamiento ${index + 1}: falta "ciudad" o no es string`);
   }
 
   return {
-    name: a.name,
-    nights: typeof a.nights === 'string' ? a.nights : '',
-    board: typeof a.board === 'string' ? a.board : '',
-    location: typeof a.location === 'string' ? a.location : '',
-  };
-}
-
-function validateService(raw: unknown, index: number): MobileService {
-  if (!raw || typeof raw !== 'object') {
-    throw new Error(`Servicio ${index + 1}: no es un objeto`);
-  }
-
-  const s = raw as Record<string, unknown>;
-
-  const validCategories = ['included', 'not_included', 'optional'];
-  const category = typeof s.category === 'string' ? s.category : '';
-
-  if (!validCategories.includes(category)) {
-    throw new Error(
-      `Servicio ${index + 1}: "category" debe ser included|not_included|optional, recibido: "${category}"`,
-    );
-  }
-
-  return {
-    category: category as MobileService['category'],
-    items: Array.isArray(s.items)
-      ? s.items.filter((i: unknown) => typeof i === 'string')
+    ciudad: a.ciudad,
+    hoteles: Array.isArray(a.hoteles)
+      ? a.hoteles.filter((h: unknown) => typeof h === 'string' && h.trim())
       : [],
   };
 }
-
-// ── BottomBanner validator ────────────────────────────────────────
 
 function validateBottomBanner(raw: unknown): BottomBanner | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
@@ -93,7 +60,7 @@ function validateBottomBanner(raw: unknown): BottomBanner | undefined {
     ? b.type as BottomBanner['type']
     : undefined;
 
-  if (!type) return undefined; // sin type válido, ignoramos el banner
+  if (!type) return undefined;
 
   return {
     title: typeof b.title === 'string' && b.title.trim() ? b.title.trim() : undefined,
@@ -105,7 +72,7 @@ function validateBottomBanner(raw: unknown): BottomBanner | undefined {
 // ── Validator principal ─────────────────────────────────────────
 
 /**
- * Valida y normaliza un objeto desconocido a MobileContent.
+ * Valida y normaliza un objeto desconocido a MobileContent v3.
  *
  * @param raw - Resultado de JSON.parse() sobre la respuesta de la IA
  * @returns MobileContent validado y con defaults seguros
@@ -128,14 +95,19 @@ export function validateMobileContent(raw: unknown): MobileContent {
     ? obj.days.map((d, i) => validateDay(d, i))
     : [];
 
-  // ── Campos opcionales ──
+  // ── Campos opcionales v3 ──
   const accommodations: MobileAccommodation[] | undefined = Array.isArray(obj.accommodations)
     ? obj.accommodations.map((a, i) => validateAccommodation(a, i))
     : undefined;
 
-  const services: MobileService[] | undefined = Array.isArray(obj.services)
-    ? obj.services.map((s, i) => validateService(s, i))
+  const serviciosIncluidos: string[] | undefined = Array.isArray(obj.serviciosIncluidos)
+    ? obj.serviciosIncluidos.filter((s: unknown) => typeof s === 'string' && s.trim())
     : undefined;
+
+  const opcionComidasPlus: string | undefined =
+    typeof obj.opcionComidasPlus === 'string' && obj.opcionComidasPlus.trim()
+      ? obj.opcionComidasPlus.trim()
+      : undefined;
 
   const notes: string[] | undefined = Array.isArray(obj.notes)
     ? obj.notes.filter((n: unknown) => typeof n === 'string')
@@ -145,7 +117,7 @@ export function validateMobileContent(raw: unknown): MobileContent {
     ? obj.pageNumber
     : undefined;
 
-  // ── Campos nuevos: bottomBanner y topNote ──
+  // ── Campos compatibles con chat de edición ──
   const bottomBanner: BottomBanner | undefined = validateBottomBanner(obj.bottomBanner);
   const topNote: string | undefined = typeof obj.topNote === 'string' && obj.topNote.trim()
     ? obj.topNote.trim()
@@ -153,14 +125,19 @@ export function validateMobileContent(raw: unknown): MobileContent {
 
   return {
     title: obj.title as string,
-    subtitle: typeof obj.subtitle === 'string' ? obj.subtitle : undefined,
+    tagline: typeof obj.tagline === 'string' ? obj.tagline : undefined,
+    tarifaDesde: typeof obj.tarifaDesde === 'string' ? obj.tarifaDesde : undefined,
     days,
     accommodations: accommodations && accommodations.length > 0 ? accommodations : undefined,
-    services: services && services.length > 0 ? services : undefined,
+    serviciosIncluidos: serviciosIncluidos && serviciosIncluidos.length > 0 ? serviciosIncluidos : undefined,
+    opcionComidasPlus,
     notes: notes && notes.length > 0 ? notes : undefined,
     pageNumber,
     bottomBanner,
     topNote,
+    priceBanner: typeof obj.priceBanner === 'string' ? obj.priceBanner : undefined,
+    agentName: typeof obj.agentName === 'string' ? obj.agentName : undefined,
+    agentPhone: typeof obj.agentPhone === 'string' ? obj.agentPhone : undefined,
   };
 }
 

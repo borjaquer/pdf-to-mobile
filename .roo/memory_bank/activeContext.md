@@ -4,6 +4,14 @@
 ✅ **IMPLEMENTACIÓN COMPLETA.** Las 8 fases del plan `plan_implementacion_pdf_to_mobile.md` han sido ejecutadas.
 🆕 **Chat de Diseño** reemplaza ContentEditor form-based por interfaz conversacional con LLM.
 🆕 **Búsqueda Web** integrada en el chat para inspirar decisiones de diseño con datos reales.
+🆕 **Migración v3 — Dossier Móvil** (Commit pendiente): schema v3, @react-pdf/renderer vectorial, fuentes Tinos/Arimo, diseño crema/navy/dorado.
+🆕 **Patrón Cabecera Absoluta + Espaciador** (Commit pendiente): [`MobileItineraryPDF.tsx`](src/components/MobileItineraryPDF.tsx) refactorizado con `position: absolute` + `heroSpacer` para full-bleed en portada y margen 40pt en páginas secundarias.
+🆕 **Escalado Tipográfico para Móvil** (Commit pendiente): fontSize base 16px en [`MobileItineraryPDF.tsx`](src/components/MobileItineraryPDF.tsx) — heroTitle 26, daySummary 16, lineHeights explícitos (1.3–1.5), heroSpacer recalibrado a 170pt. `npx tsc --noEmit` ✅ 0 errores.
+🆕 **Refactor wrap por día** (Commit pendiente): [`MobileItineraryPDF.tsx`](src/components/MobileItineraryPDF.tsx:119-132) — eliminado `wrap={false}` del `dayBlock` completo; ahora solo `dayLabel` + `dayTitle` están dentro de un `<View wrap={false} minPresenceAhead={120}>`, mientras que `daySummary` fluye libremente. `minPresenceAhead={120}` evita títulos huérfanos: si no hay ≥120pt libres para iniciar el párrafo, el bloque título+etiqueta salta entero a la página siguiente. `npx tsc --noEmit` ✅ 0 errores.
+🆕 **Maquetación definitiva — Títulos atados al primer contenido** (Commit pendiente): [`MobileItineraryPDF.tsx`](src/components/MobileItineraryPDF.tsx) — regla estricta: los títulos de sección DEBEN renderizarse junto a su primer fragmento de contenido.
+  - **Fase 1 — Alojamientos (líneas 162-188):** `wrap={false}` en section eliminado; nuevo `<View wrap={false}>` contiene `sectionHeader` + `sectionUnderline` + primera `accoRow` (index 0). El resto (`slice(1)`) fluye libre con `wrap={false}` por fila individual.
+  - **Fase 2 — Días (líneas 119-140):** Split programático de `day.resumen` en primera oración (hasta `. `) + resto. `<View wrap={false}>` ata `dayLabel` + `dayTitle` + `firstPart`. `restPart` se renderiza como `<Text>` libre sin `wrap={false}`. `dayContainer` ya no tiene `wrap={false}` ni `minPresenceAhead`.
+  - `npx tsc --noEmit` ✅ 0 errores.
 
 ## Stack Confirmado (100% Client-Side)
 - **Frontend:** React 19 + Vite 8 + TypeScript 6 + Tailwind CSS v4
@@ -12,7 +20,8 @@
 - **LLM Fallback:** OpenRouter multi-modelo (openrouter/free -> gemma-4-31b-it:free -> qwen3-next:free -> llama-3.3-70b:free)
 - **Web Search:** Firecrawl Search API (500 créditos/mes gratis)
 - **PDF Extract:** react-pdftotext (pdf.js wrapper) + charset fixer
-- **PDF Generate:** html2pdf.js (rasterizado A5, texto no seleccionable)
+- **PDF Generate:** @react-pdf/renderer (PDF vectorial nativo, texto seleccionable)
+- **Fuentes:** Tinos (≈ Liberation Serif) + Arimo (≈ Nimbus Sans) — 8 TTF en /public/fonts
 
 ## Estrategia de Conversión
 Extraer texto → LLM reformatea a JSON estructurado → html2pdf.js genera PDF A5

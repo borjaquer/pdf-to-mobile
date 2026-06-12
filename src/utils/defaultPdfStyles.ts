@@ -1,33 +1,35 @@
 import type { PdfStyles } from '../types';
 
 /**
- * Default styles reutilizables para el PDF mobile.
+ * Estilos por defecto para el dossier móvil v3.
  *
- * Extraídos de MobileItineraryPDF.tsx para evitar que usePdfConversion.ts
- * arrastre estáticamente @react-pdf/renderer al bundle principal.
+ * Réplica exacta de la paleta del PDF objetivo:
+ *   - Fondo crema #FDFBF9
+ *   - Navy #0F2C3D para headers y banda hero
+ *   - Dorado #C5A880 para acentos, filetes y subrayados
+ *   - Texto #4A5568 gris pizarra
+ *   - Cards beige #F4EFEA
  *
- * Valores de diseño "agency-grade":
- * - Navy sólido en header con badge de precio dorado
- * - Timeline visual para itinerario
- * - Sistema de color semántico para servicios
+ * Fuentes: Tinos (≈ Liberation Serif) para títulos, Arimo (≈ Nimbus Sans) para cuerpo.
+ * Se registran via Font.register en MobileItineraryPDF.tsx.
  */
 export const DEFAULT_PDF_STYLES: PdfStyles = {
-  titleColor: '#ffffff',
-  headingColor: '#0f172a',
-  textColor: '#334155',
-  accentColor: '#3b82f6',
-  backgroundColor: '#ffffff',
-  fontFamily: 'Helvetica',
-  headingFontFamily: 'Helvetica',
+  titleColor: '#FFFFFF',
+  headingColor: '#0F2C3D',
+  textColor: '#4A5568',
+  accentColor: '#C5A880',
+  backgroundColor: '#FDFBF9',
+  fontFamily: 'Arimo',
+  headingFontFamily: 'Tinos',
   headingFontWeight: '700',
-  fontSize: 14,
-  priceColor: '#f59e0b',
-  subtitleColor: '#cbd5e1',
-  dividerColor: '#e2e8f0',
-  cardBackground: '#f8fafc',
-  headerGradient: '#1e293b',
-  headerTextColor: '#f1f5f9',
-  bulletColor: '#3b82f6',
-  mutedColor: '#94a3b8',
-  cardRadius: 8,
+  fontSize: 9,
+  priceColor: '#C5A880',
+  subtitleColor: '#C5A880',
+  dividerColor: '#C5A880',
+  cardBackground: '#F4EFEA',
+  headerGradient: '#0F2C3D',
+  headerTextColor: '#FFFFFF',
+  bulletColor: '#C5A880',
+  mutedColor: '#A0AEC0',
+  cardRadius: 2,
 };
